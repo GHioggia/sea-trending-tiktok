@@ -471,7 +471,7 @@ DROP_COLS = {"play_url", "music_title", "source"}
 
 
 def archive_to_data(df: pd.DataFrame) -> Path:
-    """将 DataFrame 归档到 data/<today>/combined.json 并更新 dates.json"""
+    """将 DataFrame 归档到 data/<today>/combined.json 并更新 dates.json，合并已有数据"""
     today = str(date.today())
     date_dir = DATA_DIR / today
     date_dir.mkdir(exist_ok=True)
@@ -480,10 +480,19 @@ def archive_to_data(df: pd.DataFrame) -> Path:
     df2 = df.drop(columns=[c for c in DROP_COLS if c in df.columns], errors="ignore")
     df2 = df2.rename(columns={k: v for k, v in COLUMN_MAP.items() if k in df2.columns})
 
-    records = json.loads(df2.to_json(orient="records", force_ascii=False))
+    new_records = json.loads(df2.to_json(orient="records", force_ascii=False))
+
+    # 合并已有数据（保留 global 等之前抓取的数据）
     combined_path = date_dir / "combined.json"
-    combined_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
-    print(f"\n  已归档 {len(records)} 条 → {combined_path}")
+    if combined_path.exists():
+        existing = json.loads(combined_path.read_text(encoding="utf-8"))
+        new_ids = {r.get("id") for r in new_records}
+        kept = [r for r in existing if r.get("id") not in new_ids]
+        new_records = new_records + kept
+        print(f"\n  合并已有数据: 保留 {len(kept)} 条旧条目")
+
+    combined_path.write_text(json.dumps(new_records, ensure_ascii=False), encoding="utf-8")
+    print(f"  已归档 {len(new_records)} 条 → {combined_path}")
 
     # 更新 dates.json
     dates_path = DATA_DIR / "dates.json"
