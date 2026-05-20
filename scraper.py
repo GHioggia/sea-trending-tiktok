@@ -42,6 +42,7 @@ CATEGORY_TAGS = {
             "ID": ["mobilelegends", "freefire", "genshinimpact", "gaming", "gameandroid", "mlbb", "mobilegaming", "onlinegame"],
             "TH": ["rovthailand", "เกม", "gamingthailand", "rov", "gaming", "เกมมือถือ", "gameth"],
             "PH": ["mlbbph", "valorantph", "gamingph", "mlbb", "gaming", "genshinimpact", "freefire", "gamingphilippines"],
+            "global": ["gaming", "horrorgame", "indiegame", "mobilegame", "gamer"],
         },
     },
     "comedy": {
@@ -50,6 +51,7 @@ CATEGORY_TAGS = {
             "ID": ["komedi", "ngakak", "videolucu", "lucu", "kocak", "humor", "meme"],
             "TH": ["ตลก", "ตลกไทย", "comedythailand", "คลิปตลก", "ฮาๆ", "สายฮา"],
             "PH": ["pinoycomedy", "pinoyfunny", "hugot", "patama", "pinoytiktok", "realtalk"],
+            "global": ["funny", "meme", "comedy", "prank", "humor"],
         },
     },
     "entertainment": {
@@ -58,6 +60,7 @@ CATEGORY_TAGS = {
             "ID": ["drakor", "sinetron", "gosip", "kdrama", "gossip", "artis", "dramakorea"],
             "TH": ["ละคร", "ดารา", "thaidrama", "ละครไทย", "thaibl", "blseries", "บันเทิง"],
             "PH": ["kdramaph", "showbiz", "chismis", "kdrama", "chisme", "opm"],
+            "global": ["kdrama", "celebrity", "trending", "viral", "movie"],
         },
     },
     "horror": {
@@ -66,6 +69,7 @@ CATEGORY_TAGS = {
             "ID": ["horor", "pocong", "hororindonesia", "setan", "jumpscare", "kuntilanak", "misteri", "analoghorror"],
             "TH": ["หนังผี", "สยองขวัญ", "ผีไทย", "ผี", "เรื่องผี", "ความลึกลับ", "analoghorror"],
             "PH": ["pinoyhorror", "aswang", "multo", "engkanto", "mangkukulam", "analoghorror"],
+            "global": ["horror", "scary", "scaryprank", "jumpscare", "creepy", "analoghorror"],
         },
     },
     "cute": {
@@ -74,6 +78,7 @@ CATEGORY_TAGS = {
             "ID": ["bayilucu", "anaklucu", "kucinglucu", "hewanlucu", "kucing", "bayi", "cute"],
             "TH": ["เด็กน่ารัก", "แมวน่ารัก", "น่ารัก", "สัตว์เลี้ยง", "ทารก", "หมาน่ารัก"],
             "PH": ["cutebaby", "cuteanimals", "pinoycat", "babies", "pinoypets", "cutepets"],
+            "global": ["cute", "cuteanimals", "cutebaby", "pets", "catsoftiktok"],
         },
     },
     "dance": {
@@ -82,6 +87,7 @@ CATEGORY_TAGS = {
             "ID": ["dance", "challenge", "tiktokdance", "joget", "danceindonesia", "viral"],
             "TH": ["เต้น", "dancechallenge", "challenge", "เต้นออนไลน์", "tiktokthai"],
             "PH": ["dancechallenge", "pinoydance", "tiktokdance", "dance", "challenge"],
+            "global": ["dance", "dancechallenge", "tiktokdance", "choreography", "viral"],
         },
     },
     "food": {
@@ -90,6 +96,7 @@ CATEGORY_TAGS = {
             "ID": ["masak", "kuliner", "foodindonesia", "masakanindo", "resepmasak", "makanan"],
             "TH": ["อาหาร", "อาหารไทย", "ทำอาหาร", "เมนูอร่อย", "อาหารอร่อย", "ของกิน"],
             "PH": ["foodph", "filipinofood", "pinoyrecipe", "lutongbahay", "kakainin"],
+            "global": ["food", "cooking", "recipe", "foodtiktok", "streetfood"],
         },
     },
 }
@@ -405,27 +412,34 @@ def scrape_trends(period: int = 7, limit: int = 50) -> pd.DataFrame:
 
 # ─── Scrape Part 2: Category Tags ────────────────────────────────────────────
 
-def scrape_categories(videos_per_tag: int = 30) -> pd.DataFrame:
-    """Part 2: 按分类标签拉取游戏/搞笑/娱乐视频"""
+def scrape_categories(videos_per_tag: int = 30, categories: list[str] | None = None, regions: list[str] | None = None) -> pd.DataFrame:
+    """Part 2: 按分类标签拉取视频。categories 过滤分类，regions 过滤地区。"""
+    cats = {k: v for k, v in CATEGORY_TAGS.items() if k in categories} if categories else CATEGORY_TAGS
     all_tags = []
-    for cat_id, cat_info in CATEGORY_TAGS.items():
+    for cat_id, cat_info in cats.items():
         for region, tags in cat_info["tags"].items():
+            if regions and region not in regions:
+                continue
             all_tags.extend(tags)
 
     unique_tags = list(dict.fromkeys(all_tags))
     total_calls = len(unique_tags)
+    region_label = ", ".join(regions) if regions else "all"
     print(f"\n[Part 2] 分类标签视频 (预计 {total_calls} 次请求, 不含标签解析)")
-    print(f"  分类: {', '.join(c['name'] for c in CATEGORY_TAGS.values())}")
+    print(f"  分类: {', '.join(c['name'] for c in cats.values())}")
+    print(f"  地区: {region_label}")
 
     # Resolve all tag IDs first
     print(f"\n  解析标签 ID...")
     tag_map = resolve_tag_ids(unique_tags)
 
     all_videos = []
-    for cat_id, cat_info in CATEGORY_TAGS.items():
+    for cat_id, cat_info in cats.items():
         cat_name = cat_info["name"]
         print(f"\n  ── {cat_name} ──")
         for region, tags in cat_info["tags"].items():
+            if regions and region not in regions:
+                continue
             for tag_name in tags:
                 tag_id = tag_map.get(tag_name)
                 if not tag_id:
@@ -470,10 +484,10 @@ COLUMN_MAP = {
 DROP_COLS = {"play_url", "music_title", "source"}
 
 
-def archive_to_data(df: pd.DataFrame) -> Path:
-    """将 DataFrame 归档到 data/<today>/combined.json 并更新 dates.json，合并已有数据"""
-    today = str(date.today())
-    date_dir = DATA_DIR / today
+def archive_to_data(df: pd.DataFrame, target_date: str | None = None) -> Path:
+    """将 DataFrame 归档到 data/<date>/combined.json 并更新 dates.json，合并已有数据"""
+    target = target_date or str(date.today())
+    date_dir = DATA_DIR / target
     date_dir.mkdir(exist_ok=True)
 
     # 重命名列、去掉不需要的列
@@ -497,8 +511,8 @@ def archive_to_data(df: pd.DataFrame) -> Path:
     # 更新 dates.json
     dates_path = DATA_DIR / "dates.json"
     dates = json.loads(dates_path.read_text(encoding="utf-8")) if dates_path.exists() else []
-    if today not in dates:
-        dates = [today] + dates
+    if target not in dates:
+        dates = [target] + dates
         dates_path.write_text(json.dumps(dates, ensure_ascii=False), encoding="utf-8")
         print(f"  dates.json 已更新: {dates}")
 
@@ -572,10 +586,8 @@ def main():
         print("\n[!] 今日预算不足 10 次，建议明天再运行")
         return
 
-    # Part 1: 热门趋势排行
-    df_trends = scrape_trends(period=7, limit=50)
-    if not df_trends.empty:
-        save_results(df_trends, prefix="part1_trends")
+    # Part 1: 热门趋势排行（跳过——TikHub get_popular_trends 返回 50004）
+    df_trends = pd.DataFrame()
 
     # Part 2: 分类标签
     df_cats = scrape_categories(videos_per_tag=30)

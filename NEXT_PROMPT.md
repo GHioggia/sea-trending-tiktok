@@ -4,8 +4,8 @@
 
 请先阅读以下文件，恢复上下文：
 
-1. `HANDOFF.md`
-2. `PROGRESS.md`
+1. HANDOFF.md
+2. PROGRESS.md
 
 读完后，请先输出：
 
@@ -33,19 +33,12 @@
 - 不要无视已有设计决策
 - 不要重复读取大型文件全文，优先使用 grep / head / tail / offset / limit
 - 不要把上下文扩展到与当前任务无关的模块
-- 不要消耗 TikHub API 额度做无意义测试（每日限 50 次，当前设为 250 是调试临时值）
 
 当前任务的继续目标是：
 
-1. **改造 scraper.py 的 main() 输出**：运行后自动将 combined.json 写入 `data/<today>/`，并更新 `data/dates.json`，这样 index.html 页面切换日期时能自动看到新数据
-2. **DAILY_BUDGET 恢复为用户实际额度**（确认后设回 50 或其他值）
-3. **根据用户反馈继续调整 index.html**（如有）
-
-技术要点提醒：
-- TikHub Ads 接口 (`get_popular_trends`) 目前不可用（服务端 50004 错误），不是 bug
-- Tag ID 缓存永久有效，无需刷新
-- index.html 通过 fetch() 加载 `data/<date>/combined.json`，需要 HTTP 服务器
-- 启动预览：`python3 -m http.server 8090 --directory /home/admin/workspace/tt_scraper`
-- 获取公网 URL：`curl -s "http://localhost:58596/api/port-mapping?port=8090" | jq -r .url`
+1. **[紧急] 修复 GLOBAL tab 数据**：`data/2026-05-19/combined.json` 中 60 条 global 数据字段名为长名（video_id/desc/...），需映射为短名（id/d/...），且 cat 字段从 None 改为 `global_trending`。参考 `scraper.py` 中的 `COLUMN_MAP`。
+2. **[中] 补翻未翻译条目**：运行 `python3 translate_data.py` 翻译 combined.json 中缺少 zh 字段的条目。
+3. **[中] 推送修复到 GitHub**：`git add -A && git commit && git push`
+4. **[低] 确认 GitHub Pages 可访问**：页面地址 `https://ghioggia.github.io/sea-trending-tiktok/`
 
 请开始。

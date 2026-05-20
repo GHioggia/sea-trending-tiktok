@@ -2,67 +2,69 @@
 
 ## 当前阶段
 
-**实现中** — 核心抓取逻辑和前端展示已完成，正在打磨 UI 交互和完善数据归档流程。
+**实现中** — 核心抓取+翻译+展示全链路已打通。有一个 GLOBAL 数据字段 BUG 需修复。已推送 GitHub。
 
 ## 本轮进展
 
-1. 调研 TikHub API，发现可用端点：`fetch_tag_post`、`fetch_explore_post`、`fetch_tag_detail`
-2. 发现 `fetch_search_video` 始终 400、`get_popular_trends` 返回 50004
-3. 搭建 scraper v1（基于 SEA_HASHTAGS 硬编码标签），成功拉取印尼 260 条 + 泰国 145 条
-4. 添加 tag ID 本地缓存 + API 响应缓存（6h TTL）
-5. 用户提出 50 次/天预算限制，重新设计为 Part1 (趋势排行 12 次) + Part2 (分类标签 27 次) = 39 次/天
-6. 重写 scraper v2：CATEGORY_TAGS 按游戏/搞笑/娱乐分类，每类每国 3 标签
-7. 用户充值后全量拉取：1515 条分类 + 60 条全球 = 1575 条
-8. 前端 index.html 多次迭代：暗色主题 → 加分类筛选 → 改 Tab 结构 → 数据按日期归档加载
-9. 最后一次 UI 调整：GLOBAL 移到最后、GLOBAL 也有 Sort、Sort 统一靠右
+1. 为视频标题添加中文翻译功能：先尝试 MyMemory（有日限额），后改用 Claude API（claude-haiku）批量翻译
+2. 前端 index.html 新增 `.card-zh` 行展示中文说明，含 HASH_ZH 关键词映射兜底
+3. 分类标签从 3 个扩展到 7 个：新增恐怖/萌宠/舞蹈/美食
+4. 每个分类的 hashtag 从 3 个扩展到 5-8 个（数据驱动选择）
+5. 前端 hashtag 提示区重新设计为标签卡片式排版，显示中文名 + 条目计数
+6. 修复 `archive_to_data()` 从覆盖模式改为合并模式
+7. 修复切换地区时分类筛选被重置的问题
+8. 初始化 git 仓库，推送到 GitHub（GHioggia/sea-trending-tiktok）
+9. 完整抓取一轮新数据（3355 条 + 翻译 2940 条）
 
 ## 任务状态表
 
 | 任务 | 状态 | 说明 | 下一步 |
 |---|---|---|---|
 | TikHub API 调研 | DONE | 明确可用/不可用接口 | - |
-| 抓取框架 v2 | DONE | Part1+Part2, 预算追踪 | 输出自动归档到 data/ |
-| Tag ID 缓存 | DONE | 45 个标签已缓存 | 无需刷新 |
-| 全量数据拉取 | DONE | 1575 条 | 每日可重复运行 |
-| index.html 前端 | DOING | Tab/筛选/排序基本完成 | 用户可能还有微调 |
-| scraper 输出归档 | TODO | 当前 main() 输出到 output/ | 改为自动写入 data/<date>/ |
+| 抓取框架 v2（7分类） | DONE | 121 个标签已缓存 | 每日运行 full |
+| 中文翻译集成 | DONE | Claude API 批量翻译 | 补翻 652 条 |
+| index.html 前端 | DONE | 7分类+排序+翻译+卡片tag | 无 |
+| scraper 输出自动归档 | DONE | archive_to_data 合并模式 | - |
+| GitHub 推送 | DONE | 4 commits on main | - |
+| GitHub Pages | NEED_VERIFY | 用户需手动启用 | 用户操作 |
+| **GLOBAL tab 数据修复** | **TODO** | global.json 字段名不匹配 | 重新映射+合并 |
 | Part1 趋势排行接入 | BLOCKED | TikHub Ads 接口 ES 异常 | 等待服务端修复 |
-| output/ 目录清理 | DEFERRED | 旧文件仍存在 | 低优先级 |
 
 ## 问题与修复记录
 
-### 问题 1：CSV 导致 video_id 精度丢失
+### 问题 1：Google Translate 不可达
 
-- 现象：18-19 位数字的 video_id 在 CSV 中末几位变为 0，导致 TikTok 链接无法打开
-- 原因：Excel/pandas CSV 将大整数当作浮点数处理
-- 修复：数据源改用 JSON，video_id 始终以字符串存储
-- 结果：链接全部可正确跳转
-- 后续注意：不要用 CSV 作为页面数据源
+- 现象：`httpx.ConnectError: [Errno 99] Cannot assign requested address`
+- 原因：环境网络白名单限制，只有 tikhub.io 和 mymemory 可达
+- 修复：改用 Claude API（claude-haiku）通过本地 proxy 翻译
+- 结果：无日限额，翻译质量更好
+- 后续注意：模型名只能用 `claude-haiku`/`claude-sonnet`/`claude-opus`
 
-### 问题 2：TikHub Ads 接口不可用
+### 问题 2：archive_to_data 覆盖导致 GLOBAL 数据丢失
 
-- 现象：`get_popular_trends` 和 `get_hashtag_list` 返回 `code: 50004, "no available es index"`
-- 原因：TikHub 服务端 Elasticsearch 索引未就绪
-- 修复：无法修复（服务端问题），通过代理测试排除了网络原因
-- 结果：Part1 暂时无数据，仅 Part2 标签方案工作
-- 后续注意：定期检测是否恢复
+- 现象：第二次运行 `full` 后 GLOBAL tab 为空
+- 原因：`archive_to_data()` 直接覆写 combined.json，60 条 global 数据被覆盖
+- 修复：改为合并模式（新数据按 id 覆盖，保留旧条目）+ 手动恢复 global.json
+- 结果：数据量恢复到 3415 条，但 global 条目字段名仍为长名
+- 后续注意：**global.json 字段名映射尚未完成，GLOBAL tab 仍不可用**
 
-### 问题 3：TikTok CDN 封面图 403
+### 问题 3：MyMemory 每日额度限制
 
-- 现象：卡片封面图无法加载
-- 原因：TikTok CDN 检查 Referer
-- 修复：添加 `<meta name="referrer" content="no-referrer">` + img 标签 `referrerpolicy="no-referrer"`
-- 结果：封面正常显示
+- 现象：翻译 889 条后停止，报 quotaFinished
+- 原因：免费每日 5000 字符限制
+- 修复：切换到 Claude API 无限额翻译
+- 结果：完全解决
 
 ## 验证状态
 
-- 已验证：scraper 抓取流程、缓存机制、预算追踪、index.html 页面加载和筛选
-- 未验证：scraper 输出自动归档到 data/（尚未实现）
-- 需要人工验证：TikHub Ads 接口是否恢复
+- 已验证：scraper 抓取流程、缓存机制、预算追踪、翻译流程、git push
+- 未验证：GitHub Pages 部署是否成功（用户需启用）
+- 需要人工验证：GLOBAL tab 修复后在浏览器查看
 - 需要后续自动化验证：每日定时抓取是否正常
 
 ## 下一阶段目标
 
-1. 改造 `scraper.py` 的 `main()` 使其输出自动归档到 `data/<date>/combined.json` 并更新 `dates.json`
-2. 根据用户反馈继续微调 index.html
-3. 监控 TikHub Ads 接口恢复情况
+1. 修复 GLOBAL 数据字段映射（将 global.json 的长字段名转为短字段名 + cat=global_trending）
+2. 补翻 652 条未翻译条目
+3. 确认 GitHub Pages 可正常访问
+4. 推送修复后的数据到 GitHub

@@ -2,93 +2,97 @@
 
 ## 1. 当前任务一句话总结
 
-使用 TikHub API 抓取 TikTok 东南亚（印尼/泰国/菲律宾）热点短视频，按分类标签（游戏/搞笑/娱乐）和全球热门组织数据，通过 index.html 前端页面展示。核心抓取和展示功能已完成，正在优化前端页面交互。
+使用 TikHub API 抓取 TikTok 东南亚（印尼/泰国/菲律宾）热点短视频，按 7 个分类标签（游戏/搞笑/娱乐/恐怖/萌宠/舞蹈/美食）+ 全球热门组织数据，通过 index.html 前端页面展示，带中文翻译。项目已推送到 GitHub 并配置 Pages。**当前有一个 BUG 需修复：GLOBAL tab 数据丢失（字段名不匹配）**。
 
 ## 2. 项目与环境
 
 - 当前目录：`/home/admin/workspace/tt_scraper`
-- 当前分支：**不是 git 仓库**
-- Git 状态：无 git
-- 主要技术栈：Python 3.12 + httpx + pandas + dotenv；前端纯 HTML/CSS/JS
-- 关键入口文件：`scraper.py`（主抓取）、`quick_fetch.py`（CLI 快捷工具）、`index.html`（展示页面）
+- 当前分支：**main**
+- Git 状态：干净（已全部提交+推送）
+- 远程仓库：`https://github.com/GHioggia/sea-trending-tiktok.git`
+- GitHub Pages：用户需在 Settings → Pages 启用（main / root）
+- 主要技术栈：Python 3.12 + httpx + pandas + dotenv + anthropic；前端纯 HTML/CSS/JS
+- 关键入口文件：`scraper.py`（主抓取+归档）、`quick_fetch.py`（CLI）、`index.html`（展示）、`translate_data.py`（翻译）
 - 关键配置/文档路径：
   - `.env` — TikHub API Token
-  - `cache/tag_ids.json` — 45 个标签 ID 缓存（永久）
+  - `cache/tag_ids.json` — 121 个标签 ID 缓存（永久）
   - `cache/budget.json` — 每日 API 请求计数
   - `data/dates.json` — 可用数据日期索引
   - `data/<date>/combined.json` — 每日合并数据（供 index.html 加载）
 
 ## 3. 当前目标
 
-- 完善 index.html 前端展示页面的交互体验
-- 后续需要将 scraper.py 的输出自动归档到 `data/<date>/` 目录结构
-- 不应修改核心抓取逻辑，不应消耗 API 额度做测试
+- **[紧急] 修复 GLOBAL tab 数据缺失**：`data/2026-05-19/global.json` 用的是长字段名（video_id/desc/...），合并到 combined.json 时没有做列名映射，且 `category` 字段为 None（应为 `global_trending`）
+- 确认 GitHub Pages 已成功部署
+- 每日运行 `python3 quick_fetch.py full` 即可自动抓取+归档+翻译
 
 ## 4. 已完成工作
 
 | # | 做了什么 | 文件 | 验证 |
 |---|---|---|---|
-| 1 | 搭建 TikHub API 抓取框架（v2），支持 Part1 趋势排行 + Part2 分类标签 | `scraper.py` | ✅ 已运行，Part2 拉取 1515 条 |
-| 2 | 快捷 CLI 工具（trends/category/budget 命令） | `quick_fetch.py` | ✅ budget 命令验证通过 |
-| 3 | 本地缓存机制：tag ID 永久缓存 + API 响应 6h TTL + 每日预算追踪 | `scraper.py`, `cache/` | ✅ 全部验证通过 |
-| 4 | 全量数据拉取：1515 条分类 + 60 条全球 = 1575 条 | `data/2026-05-19/` | ✅ |
-| 5 | index.html 前端页面（dark theme, tabs, category filters, sort） | `index.html` | ✅ 可通过 HTTP 访问 |
-| 6 | 数据按日期归档目录结构 | `data/` | ✅ 2 天数据已归档 |
+| 1 | 搭建 TikHub API 抓取框架 v2，7 个分类 × 3 地区，每类 5-8 个 hashtag | `scraper.py` | ✅ 已抓取 3355 条 |
+| 2 | 快捷 CLI 工具（trends/category/budget/full） | `quick_fetch.py` | ✅ |
+| 3 | 本地缓存机制：tag ID 永久缓存 + API 响应 6h TTL + 每日预算追踪 | `scraper.py`, `cache/` | ✅ |
+| 4 | 自动归档到 `data/<date>/combined.json` + 更新 dates.json（合并模式不覆盖） | `scraper.py` archive_to_data() | ✅ |
+| 5 | Claude API 批量翻译（claude-haiku），自动集成在 full 流程中 | `translate_data.py` | ✅ 2763/3415 条已翻译 |
+| 6 | index.html 前端（dark theme, 7个分类Tab, 地区筛选, 排序, 中文翻译展示, hashtag 标签卡片） | `index.html` | ✅ |
+| 7 | 切换地区时保持分类筛选状态 | `index.html` | ✅ |
+| 8 | 推送到 GitHub | git remote | ✅ aa60075 |
+| 9 | DAILY_BUDGET 从 250 调至 500 | `scraper.py` | ✅ |
 
 ## 5. 关键设计决策
 
 | 决策 | 原因 | 影响范围 | 注意事项 |
 |---|---|---|---|
-| 使用 `fetch_tag_post` 作为核心数据源（非 ads 排行接口） | TikHub Ads 接口 `get_popular_trends` 服务端 ES 索引异常（code 50004），所有国家均返回空 | 全局 | Ads 接口恢复后可重新启用 Part1 |
-| Tag ID 永久缓存不过期 | TikTok hashtag ID 是固定标识，不会变化 | `cache/tag_ids.json` | 标签被下架时会返回空数据但不报错 |
-| 每日预算追踪（DAILY_BUDGET） | 用户套餐有限，需严格控制 | `scraper.py` | 当前设为 250（用户已充值），原始套餐为 50 |
-| index.html 通过 fetch 加载 `data/<date>/combined.json` | 支持多日期切换，页面本身不内嵌数据 | `index.html`, `data/` | 需要 HTTP 服务器，不能直接双击打开 |
-| 代理 `http://mgproxy.ejoy.com:23488` 可用但对 Ads 接口无帮助 | 已验证代理不影响 50004 错误 | 无 | 用户提供的代理地址 |
+| 使用 `fetch_tag_post` 作为核心数据源 | TikHub Ads 接口 `get_popular_trends` 返回 50004 | 全局 | Ads 接口恢复后可重新启用 Part1 |
+| Tag ID 永久缓存不过期 | TikTok hashtag ID 是固定标识 | `cache/tag_ids.json` | 当前已缓存 121 个标签 |
+| combined.json 使用短字段名（id/d/t/p/l/...） | 减小 JSON 体积，前端已适配 | 前端+归档 | global.json 仍用长字段名，需修复 |
+| archive_to_data 合并模式 | 避免覆盖 global 等之前抓取的数据 | `scraper.py` | 新数据按 id 去重覆盖旧条目 |
+| 翻译用 Claude API（claude-haiku） | 环境网络限制 Google Translate 不可达，MyMemory 有日限额 | `translate_data.py` | 本地 proxy `127.0.0.1:58597` 转发，模型名用 `claude-haiku` |
+| GitHub Pages 从 main 分支根目录部署 | index.html 在根目录，data/ 也在根目录 | 部署 | 用户需手动启用 Pages |
 
 ## 6. 当前文件变更清单
 
 | 文件 | 类型 | 摘要 | 风险 | 继续处理 |
 |---|---|---|---|---|
-| `scraper.py` | 新增 | v2 抓取框架，Part1+Part2，预算追踪 | 低 | 需要把输出自动写入 `data/<date>/` |
-| `quick_fetch.py` | 新增 | CLI 工具 | 低 | 无 |
-| `index.html` | 新增 | 前端展示页面 | 低 | 用户正在调整 UI |
-| `data/dates.json` | 新增 | 日期索引 | 低 | scraper 需自动更新此文件 |
-| `data/2026-05-19/combined.json` | 新增 | 当日数据 | 低 | 无 |
-| `cache/tag_ids.json` | 修改 | 45 个标签 ID | 低 | 无 |
-| `.env` | 存在 | 含用户 API Token | 高 | 不要提交到版本控制 |
+| `scraper.py` | 修改 | 7分类扩展+archive_to_data合并模式+DAILY_BUDGET=500 | 低 | 需修复 global 数据合并逻辑 |
+| `index.html` | 修改 | 7分类按钮+tag卡片排版+中文翻译+地区切换保持tab | 低 | 无 |
+| `translate_data.py` | 修改 | 改用 Claude API 批量翻译 | 低 | 无 |
+| `data/2026-05-19/combined.json` | 修改 | 3415条（但global 60条字段名错误） | **中** | **需修复** |
+| `.gitignore` | 新增 | 排除 .env/cache/output/__pycache__ | 低 | 无 |
 
 ## 7. 验证记录
 
 | 命令 | 目的 | 结果 | 备注 |
 |---|---|---|---|
-| `python3 quick_fetch.py budget` | 验证预算追踪 | 正常显示 50/50 used | - |
-| `python3 scraper.py` (full run) | 完整抓取测试 | Part1 返回 0（Ads 接口异常），Part2 成功 345 条 | 首次运行消耗了标签解析 |
-| 手动完整拉取脚本 | 1515+60 条视频 | 成功，56 次 API 调用 | - |
-| `curl http://localhost:8090/index.html` | 验证页面服务 | 200 OK | HTTP server on port 8090 |
-| 代理测试 get_popular_trends | 排除网络问题 | 同样 50004 错误 | TikHub 服务端问题 |
+| `python3 quick_fetch.py budget` | 确认预算 | 今日 0/500 剩余 | 日期已翻到 2026-05-20 |
+| `python3 quick_fetch.py full` | 完整抓取 | 3355 条分类数据 + 翻译 2940 条 | 预算用了 292 次 |
+| `git push` | 推送到 GitHub | ✅ 成功 | 4 个 commit |
+| `python3 -c "import scraper"` | 语法检查 | ✅ OK | - |
+| 检查 combined.json global 数据 | 验证 GLOBAL tab | ❌ cat=None，字段名为长名 | **需修复** |
 
 ## 8. 未完成事项
 
-1. **[高] scraper.py 输出自动归档** — main() 运行后应自动将数据写入 `data/<today>/combined.json` 并更新 `data/dates.json`
-2. **[中] Part1 趋势排行** — `get_popular_trends` 接口恢复后重新接入
-3. **[中] index.html 细节打磨** — 用户可能还有 UI 调整需求
-4. **[低] DAILY_BUDGET 恢复** — 当前设为 250（调试用），日常应该设回 50 或用户实际套餐额度
-5. **[低] output/ 目录清理** — 旧的 CSV/JSON 文件仍在 output/ 中
+1. **[高] 修复 GLOBAL 数据字段**：`data/2026-05-19/combined.json` 中 60 条 global 数据的字段名是长名（video_id 而非 id），且 cat 为 None（应为 global_trending）。需要重新处理 global.json → 映射列名 + 设置 cat=global_trending → 合并回 combined.json
+2. **[中] 未翻译条目**：3415 条中有 652 条无 zh 字段（主要是新增的 dance/food 分类和 global）
+3. **[低] DAILY_BUDGET 恢复**：当前为 500（调试用），日常应根据用户实际套餐设定
+4. **[低] GitHub Pages 启用**：用户需手动到 Settings → Pages 启用
+5. **[低] `get_popular_trends` 接口**：仍返回 50004，定期检查恢复
 
 ## 9. 已知风险与坑点
 
-- **TikHub Ads 接口不可用**：`get_popular_trends` 和 `get_hashtag_list` 均返回 `code: 50004, "no available es index"`。这不是用户网络/套餐问题，是 TikHub 服务端维护。代理测试已确认。
-- **CSV 大数字精度丢失**：video_id 是 19 位数字，CSV 会截断末位变 0。页面数据源必须用 JSON，不能用 CSV。
-- **TikTok CDN 封面图**：需要 `referrerpolicy="no-referrer"` 才能加载，否则 403。
-- **fetch_search_video 接口**：一直返回 400，无法使用搜索功能。
-- **index.html 需要 HTTP 服务器**：使用 fetch() 加载 JSON，不能 file:// 协议打开。
+- **global.json 用长字段名**：历史遗留文件，和 combined.json 的短字段名不一致。合并时必须做 COLUMN_MAP 映射 + 设置 `cat: "global_trending"`
+- **Claude API 模型名**：本环境 proxy 只认 `claude-haiku`/`claude-sonnet`/`claude-opus`（无版本号），不支持 `claude-3-5-haiku-20241022` 等完整名称
+- **TikTok CDN 封面图**：需要 `referrerpolicy="no-referrer"`，否则 403
+- **video_id 是 19 位数字**：必须用 JSON 不能用 CSV
+- **网络限制**：环境只能访问 api.tikhub.io 和 api.mymemory.translated.net，Google/DeepL 等均不可达
+- **`fetch_search_video`** 始终返回 400，无法使用
 
 ## 10. 下轮建议读取的文件
 
 | 文件 | 原因 |
 |---|---|
-| `index.html` | 用户正在迭代 UI，需了解当前结构 |
-| `scraper.py` 的 `main()` 函数 | 需要改造输出路径到 `data/<date>/` |
-| `data/dates.json` | 了解日期索引格式 |
-| `cache/tag_ids.json` | 确认 45 个标签都已缓存 |
-| `.env` | 确认 Token 存在 |
+| `data/2026-05-19/global.json` | 需修复字段名映射，head 看前几条即可 |
+| `scraper.py` 的 `archive_to_data()` 函数 | 需要在合并 global 数据时做字段映射 |
+| `index.html` 的 `doFilter()` | 确认 global_trending 过滤逻辑 |
+| `data/2026-05-19/combined.json` | 验证修复后 global 数据正确 |

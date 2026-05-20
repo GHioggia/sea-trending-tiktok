@@ -43,8 +43,8 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(circle 
 .ptab .ptab-icon{display:block;font-size:1.1rem;margin-bottom:2px}
 
 /* Second Bar */
-.bar2{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;margin-bottom:16px;flex-wrap:wrap;gap:8px;min-height:46px}
-.bar2-left{display:flex;flex-direction:column;gap:4px}
+.bar2{display:flex;align-items:flex-start;justify-content:space-between;padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;margin-bottom:16px;gap:8px;min-height:46px}
+.bar2-left{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
 .cat-row{display:flex;gap:5px;flex-wrap:wrap}
 .cbtn{padding:6px 15px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:.82rem;font-weight:500;cursor:pointer;transition:all .2s}
 .cbtn:hover{border-color:var(--text-dim);color:var(--text)}
@@ -62,7 +62,7 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(circle 
 .tag-hint .th .tn{color:var(--cyan)}
 .tag-hint .th .tz{color:var(--text-dim);margin-left:4px}
 .tag-hint .th .tc{color:var(--gold);margin-left:4px;font-weight:700}
-.bar2-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.bar2-right{display:flex;align-items:flex-start;gap:8px;flex-shrink:0}
 .ctrl{padding:5px 24px 5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-raised);color:var(--text-dim);font-size:.72rem;font-family:'Outfit',sans-serif;cursor:pointer;outline:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='8' height='5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l4 5 4-5' fill='%236e6e88'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;transition:all .2s}
 .ctrl:hover,.ctrl:focus{border-color:var(--cyan);color:var(--text)}
 
@@ -98,6 +98,13 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(circle 
 .more:hover{border-color:var(--cyan);color:var(--cyan)}
 .empty-msg{text-align:center;padding:50px;color:var(--text-dim);font-size:.85rem;display:none}
 .loading{text-align:center;padding:60px;color:var(--text-dim);font-size:.9rem}
+
+/* Insight Panel */
+.insight-panel{margin-bottom:16px;padding:14px 18px;background:linear-gradient(135deg,rgba(17,17,24,.95),rgba(26,26,36,.9));border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);display:none}
+.insight-panel.visible{display:block}
+.insight-panel .insight-label{font-size:.65rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:6px}
+.insight-panel .insight-text{font-size:.82rem;line-height:1.65;color:var(--text);white-space:pre-wrap}
+
 footer{text-align:center;margin-top:32px;padding:14px;border-top:1px solid var(--border);color:var(--text-dim);font-size:.62rem;font-family:'JetBrains Mono',monospace}
 @media(max-width:700px){.grid{grid-template-columns:1fr}.hdr{flex-direction:column;align-items:flex-start}.ptab{padding:10px 6px;font-size:.72rem}.bar2{flex-direction:column;align-items:flex-start}}
 </style>
@@ -147,6 +154,11 @@ footer{text-align:center;margin-top:32px;padding:14px;border-top:1px solid var(-
         <option value="t">Newest</option>
       </select>
     </div>
+  </div>
+
+  <div class="insight-panel" id="insight-panel">
+    <div class="insight-label" id="insight-label">AI INSIGHT</div>
+    <div class="insight-text" id="insight-text"></div>
   </div>
 
   <div class="loading" id="loading">Loading data...</div>
@@ -228,41 +240,48 @@ var TAG_INFO={
   gaming:{
     ID:['mobilelegends','freefire','genshinimpact','gaming','gameandroid','mlbb','mobilegaming','onlinegame'],
     TH:['rovthailand','เกม','gamingthailand','rov','gaming','เกมมือถือ','gameth'],
-    PH:['mlbbph','valorantph','gamingph','mlbb','gaming','genshinimpact','freefire','gamingphilippines']
+    PH:['mlbbph','valorantph','gamingph','mlbb','gaming','genshinimpact','freefire','gamingphilippines'],
+    global:['gaming','horrorgame','indiegame','mobilegame','gamer']
   },
   comedy:{
     ID:['komedi','ngakak','videolucu','lucu','kocak','humor','meme'],
     TH:['ตลก','ตลกไทย','comedythailand','คลิปตลก','ฮาๆ','สายฮา'],
-    PH:['pinoycomedy','pinoyfunny','hugot','patama','pinoytiktok','realtalk']
+    PH:['pinoycomedy','pinoyfunny','hugot','patama','pinoytiktok','realtalk'],
+    global:['funny','meme','comedy','prank','humor']
   },
   entertainment:{
     ID:['drakor','sinetron','gosip','kdrama','gossip','artis','dramakorea'],
     TH:['ละคร','ดารา','thaidrama','ละครไทย','thaibl','blseries','บันเทิง'],
-    PH:['kdramaph','showbiz','chismis','kdrama','chisme','opm']
+    PH:['kdramaph','showbiz','chismis','kdrama','chisme','opm'],
+    global:['kdrama','celebrity','trending','viral','movie']
   },
   horror:{
     ID:['horor','pocong','hororindonesia','setan','jumpscare','kuntilanak','misteri','analoghorror'],
     TH:['หนังผี','สยองขวัญ','ผีไทย','ผี','เรื่องผี','ความลึกลับ','analoghorror'],
-    PH:['pinoyhorror','aswang','multo','engkanto','mangkukulam','analoghorror']
+    PH:['pinoyhorror','aswang','multo','engkanto','mangkukulam','analoghorror'],
+    global:['horror','scary','scaryprank','jumpscare','creepy','analoghorror']
   },
   cute:{
     ID:['bayilucu','anaklucu','kucinglucu','hewanlucu','kucing','bayi','cute'],
     TH:['เด็กน่ารัก','แมวน่ารัก','น่ารัก','สัตว์เลี้ยง','ทารก','หมาน่ารัก'],
-    PH:['cutebaby','cuteanimals','pinoycat','babies','pinoypets','cutepets']
+    PH:['cutebaby','cuteanimals','pinoycat','babies','pinoypets','cutepets'],
+    global:['cute','cuteanimals','cutebaby','pets','catsoftiktok']
   },
   dance:{
     ID:['dance','challenge','tiktokdance','joget','danceindonesia','viral'],
     TH:['เต้น','dancechallenge','challenge','เต้นออนไลน์','tiktokthai'],
-    PH:['dancechallenge','pinoydance','tiktokdance','dance','challenge']
+    PH:['dancechallenge','pinoydance','tiktokdance','dance','challenge'],
+    global:['dance','dancechallenge','tiktokdance','choreography','viral']
   },
   food:{
     ID:['masak','kuliner','foodindonesia','masakanindo','resepmasak','makanan'],
     TH:['อาหาร','อาหารไทย','ทำอาหาร','เมนูอร่อย','อาหารอร่อย','ของกิน'],
-    PH:['foodph','filipinofood','pinoyrecipe','lutongbahay','kakainin']
+    PH:['foodph','filipinofood','pinoyrecipe','lutongbahay','kakainin'],
+    global:['food','cooking','recipe','foodtiktok','streetfood']
   }
 };
 
-var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[];
+var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[],INSIGHTS=null;
 
 function fmt(n){if(!n)return'0';n=+n;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':n.toString()}
 function dur(s){if(!s)return'';s=+s;return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
@@ -274,7 +293,7 @@ function updateHint(){
   if(curPrimary==='global'||curCat==='all'){el.innerHTML='';return}
   var info=TAG_INFO[curCat];if(!info){el.innerHTML='';return}
   var regions=(curPrimary==='all')?['ID','TH','PH']:[curPrimary];
-  var rn={ID:'🇮🇩 印尼',TH:'🇹🇭 泰国',PH:'🇵🇭 菲律宾'};
+  var rn={ID:'🇮🇩 印尼',TH:'🇹🇭 泰国',PH:'🇵🇭 菲律宾',global:'🌐 全球'};
   var parts=[];
   regions.forEach(function(r){
     var tags=info[r];if(!tags||!tags.length)return;
@@ -294,17 +313,37 @@ function updateHint(){
   el.innerHTML=parts.join('');
 }
 
-function updateBar2(){
-  var isGlobal=curPrimary==='global';
-  document.getElementById('bar2-left').style.display=isGlobal?'none':'';
-  document.getElementById('time-filter').style.display=isGlobal?'none':'';
+function updateBar2(){}
+
+function mdToHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\n/g,'<br>');
+}
+
+var REGION_LABEL={'all':'东南亚','ID':'印尼','TH':'泰国','PH':'菲律宾','global':'全球'};
+var CAT_LABEL={'all':'全类型','gaming':'游戏','comedy':'搞笑','entertainment':'娱乐','horror':'恐怖','cute':'萌宠','dance':'舞蹈','food':'美食'};
+
+function updateInsight(){
+  var panel=document.getElementById('insight-panel');
+  var textEl=document.getElementById('insight-text');
+  var labelEl=document.getElementById('insight-label');
+  if(!INSIGHTS){panel.classList.remove('visible');return}
+  var regionKey=curPrimary;
+  var catKey=curCat==='all'?'all':curCat;
+  var regionData=INSIGHTS[regionKey];
+  if(!regionData){panel.classList.remove('visible');return}
+  var text=regionData[catKey];
+  if(!text){panel.classList.remove('visible');return}
+  labelEl.textContent='本周'+(REGION_LABEL[regionKey]||regionKey)+'×'+(CAT_LABEL[catKey]||catKey)+'标签下的AI洞察';
+  textEl.innerHTML=mdToHtml(text);
+  panel.classList.add('visible');
 }
 
 function doFilter(){
   filtered=DATA.filter(function(d){
-    if(curPrimary==='global')return d.cat==='global_trending';
-    if(curPrimary!=='all'&&d.r!==curPrimary)return false;
-    if(d.cat==='global_trending')return false;
+    if(curPrimary==='global'){if(d.r!=='global')return false;}
+    else{if(d.r==='global')return false;if(curPrimary!=='all'&&d.r!==curPrimary)return false;}
     if(curCat!=='all'&&d.cat!==curCat)return false;
     if(curTime==='7d'&&!isW7(d.t))return false;
     return true;
@@ -333,7 +372,11 @@ function render(){
 function loadDate(dateStr){
   document.getElementById('loading').style.display='block';
   document.getElementById('grid').innerHTML='';
-  fetch('data/'+dateStr+'/combined.json').then(function(r){return r.json()}).then(function(d){
+  INSIGHTS=null;updateInsight();
+  fetch('data/'+dateStr+'/insights.json?t='+Date.now()).then(function(r){return r.ok?r.json():null}).then(function(d){
+    INSIGHTS=d;updateInsight();
+  }).catch(function(){});
+  fetch('data/'+dateStr+'/combined.json?t='+Date.now()).then(function(r){return r.json()}).then(function(d){
     DATA=d;page=1;doFilter();render();
   }).catch(function(e){
     document.getElementById('loading').textContent='Failed to load data for '+dateStr;
@@ -357,12 +400,12 @@ document.getElementById('primary-tabs').addEventListener('click',function(e){
   var t=e.target.closest('.ptab');if(!t)return;
   this.querySelectorAll('.ptab').forEach(function(x){x.classList.remove('active')});
   t.classList.add('active');curPrimary=t.dataset.p;
-  page=1;updateBar2();updateHint();doFilter();render();
+  page=1;updateBar2();updateHint();updateInsight();doFilter();render();
 });
 document.getElementById('cat-row').addEventListener('click',function(e){
   var b=e.target.closest('.cbtn');if(!b)return;
   this.querySelectorAll('.cbtn').forEach(function(x){x.classList.remove('active')});
-  b.classList.add('active');curCat=b.dataset.c;page=1;updateHint();doFilter();render();
+  b.classList.add('active');curCat=b.dataset.c;page=1;updateHint();updateInsight();doFilter();render();
 });
 document.getElementById('sort-sel').addEventListener('change',function(){curSort=this.value;page=1;doFilter();render()});
 document.getElementById('time-filter').addEventListener('change',function(){curTime=this.value;page=1;doFilter();render()});
