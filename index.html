@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>SEA Viral Pulse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#08080c;--surface:#111118;--surface-raised:#1a1a24;--surface-hover:#22222f;
+  --accent:#ff3366;--accent-glow:rgba(255,51,102,.2);
+  --cyan:#00e5ff;--green:#00e676;--gold:#ffab00;--purple:#aa66ff;--blue:#448aff;
+  --text:#e8e8f0;--text-dim:#6e6e88;--border:#252533;--radius:10px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;font-weight:300;min-height:100vh}
+body::after{content:'';position:fixed;inset:0;background:radial-gradient(circle at 10% 20%,rgba(255,51,102,.04),transparent 40%),radial-gradient(circle at 90% 80%,rgba(0,229,255,.03),transparent 40%);pointer-events:none}
+.shell{max-width:1480px;margin:0 auto;padding:20px;position:relative;z-index:1}
+
+/* Header */
+.hdr{display:flex;align-items:center;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.hdr h1{font-weight:900;font-size:1.6rem;letter-spacing:-.5px;background:linear-gradient(90deg,var(--accent),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;white-space:nowrap}
+.hdr .date-pick{display:flex;align-items:center;gap:6px}
+.hdr .date-pick select{padding:5px 24px 5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.78rem;cursor:pointer;outline:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='8' height='5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l4 5 4-5' fill='%236e6e88'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+.hdr .date-pick select:hover,.hdr .date-pick select:focus{border-color:var(--cyan)}
+.hdr .stats{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--text-dim)}
+.hdr .stats b{color:var(--cyan)}
+
+/* Primary Tabs */
+.primary-tabs{display:flex;gap:0;background:var(--surface);border-radius:12px 12px 0 0;border:1px solid var(--border);border-bottom:none;overflow-x:auto}
+.ptab{flex:1;padding:14px 10px;text-align:center;font-size:.84rem;font-weight:700;color:var(--text-dim);cursor:pointer;transition:all .2s;position:relative;letter-spacing:.3px;border-right:1px solid var(--border);min-width:90px}
+.ptab:last-child{border-right:none}
+.ptab:hover{color:var(--text);background:var(--surface-raised)}
+.ptab.active{color:#fff}
+.ptab.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px}
+.ptab[data-p="global"].active{background:linear-gradient(180deg,rgba(0,229,255,.12),transparent)}.ptab[data-p="global"].active::after{background:var(--cyan)}
+.ptab[data-p="all"].active{background:linear-gradient(180deg,rgba(255,51,102,.1),transparent)}.ptab[data-p="all"].active::after{background:var(--accent)}
+.ptab[data-p="TH"].active{background:linear-gradient(180deg,rgba(255,171,0,.1),transparent)}.ptab[data-p="TH"].active::after{background:var(--gold)}
+.ptab[data-p="ID"].active{background:linear-gradient(180deg,rgba(229,57,53,.1),transparent)}.ptab[data-p="ID"].active::after{background:#e53935}
+.ptab[data-p="PH"].active{background:linear-gradient(180deg,rgba(68,138,255,.1),transparent)}.ptab[data-p="PH"].active::after{background:var(--blue)}
+.ptab .ptab-icon{display:block;font-size:1.1rem;margin-bottom:2px}
+
+/* Second Bar */
+.bar2{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;margin-bottom:16px;flex-wrap:wrap;gap:8px;min-height:46px}
+.bar2-left{display:flex;flex-direction:column;gap:4px}
+.cat-row{display:flex;gap:5px;flex-wrap:wrap}
+.cbtn{padding:6px 15px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:.82rem;font-weight:500;cursor:pointer;transition:all .2s}
+.cbtn:hover{border-color:var(--text-dim);color:var(--text)}
+.cbtn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.cbtn[data-c="gaming"].active{background:var(--green);border-color:var(--green);color:#000}
+.cbtn[data-c="comedy"].active{background:var(--gold);border-color:var(--gold);color:#000}
+.cbtn[data-c="entertainment"].active{background:var(--purple);border-color:var(--purple);color:#fff}
+.cbtn[data-c="horror"].active{background:#b91c1c;border-color:#b91c1c;color:#fff}
+.cbtn[data-c="cute"].active{background:#e879a0;border-color:#e879a0;color:#fff}
+.cbtn[data-c="dance"].active{background:#38bdf8;border-color:#38bdf8;color:#000}
+.cbtn[data-c="food"].active{background:#fb923c;border-color:#fb923c;color:#000}
+.tag-hint{font-size:.76rem;color:var(--text-dim);line-height:1.6;margin-top:4px}
+.tag-hint em{color:var(--accent);font-style:normal;font-weight:600;display:inline-block;margin-right:6px;margin-top:4px}
+.tag-hint .th{display:inline-block;padding:2px 8px;margin:2px 3px;background:var(--surface-raised);border:1px solid var(--border);border-radius:5px;font-size:.72rem;white-space:nowrap}
+.tag-hint .th .tn{color:var(--cyan)}
+.tag-hint .th .tz{color:var(--text-dim);margin-left:4px}
+.tag-hint .th .tc{color:var(--gold);margin-left:4px;font-weight:700}
+.bar2-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.ctrl{padding:5px 24px 5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-raised);color:var(--text-dim);font-size:.72rem;font-family:'Outfit',sans-serif;cursor:pointer;outline:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='8' height='5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l4 5 4-5' fill='%236e6e88'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;transition:all .2s}
+.ctrl:hover,.ctrl:focus{border-color:var(--cyan);color:var(--text)}
+
+/* Grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:all .25s;animation:rise .3s ease both;text-decoration:none;color:inherit;display:block}
+.card:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 6px 24px var(--accent-glow);background:var(--surface-hover)}
+.card-img{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:var(--surface-raised)}
+.card-img img{width:100%;height:100%;object-fit:cover;transition:transform .35s}
+.card:hover .card-img img{transform:scale(1.04)}
+.card-img .ov{position:absolute;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s}
+.card:hover .ov{opacity:1}
+.ov .tri{width:0;height:0;border-style:solid;border-width:10px 0 10px 17px;border-color:transparent transparent transparent #fff}
+.pill{position:absolute;padding:2px 7px;border-radius:3px;font-size:.58rem;font-weight:700;letter-spacing:.3px}
+.pill-dur{bottom:5px;right:5px;background:rgba(0,0,0,.8);color:#fff;font-family:'JetBrains Mono',monospace}
+.pill-r{top:5px;left:5px;text-transform:uppercase}
+.pill-r.id{background:#e53935;color:#fff}.pill-r.th{background:var(--gold);color:#000}.pill-r.ph{background:var(--blue);color:#fff}.pill-r.global{background:var(--cyan);color:#000}
+.card-bd{padding:11px}
+.card-desc{font-size:.76rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:3px;min-height:2.1em}
+.card-zh{font-size:.68rem;color:#9898b8;line-height:1.3;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:5px;font-style:italic}
+.card-author{font-size:.68rem;color:var(--cyan);margin-bottom:7px;opacity:.85}
+.card-author::before{content:'@'}
+.card-nums{display:grid;grid-template-columns:repeat(4,1fr);gap:2px}
+.card-num{text-align:center;padding:3px 0;background:rgba(255,255,255,.02);border-radius:4px}
+.card-num b{display:block;font-family:'JetBrains Mono',monospace;font-size:.78rem;font-weight:700}
+.card-num small{font-size:.52rem;color:var(--text-dim);text-transform:uppercase}
+.card-foot{margin-top:7px;padding-top:6px;border-top:1px solid var(--border);display:flex;justify-content:space-between}
+.card-tags{font-size:.6rem;color:var(--accent);opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+.card-date{font-size:.58rem;color:var(--text-dim);font-family:'JetBrains Mono',monospace}
+.no-img{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:1.6rem;color:var(--text-dim);background:linear-gradient(135deg,var(--surface),var(--surface-raised))}
+.more{display:block;margin:24px auto;padding:9px 32px;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--text-dim);font-size:.78rem;cursor:pointer;transition:all .2s;font-family:'Outfit',sans-serif}
+.more:hover{border-color:var(--cyan);color:var(--cyan)}
+.empty-msg{text-align:center;padding:50px;color:var(--text-dim);font-size:.85rem;display:none}
+.loading{text-align:center;padding:60px;color:var(--text-dim);font-size:.9rem}
+
+/* Insight Panel */
+.insight-panel{margin-bottom:16px;padding:14px 18px;background:linear-gradient(135deg,rgba(17,17,24,.95),rgba(26,26,36,.9));border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);display:none}
+.insight-panel.visible{display:block}
+.insight-panel .insight-label{font-size:.65rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:6px}
+.insight-panel .insight-text{font-size:.82rem;line-height:1.65;color:var(--text);white-space:pre-wrap}
+
+footer{text-align:center;margin-top:32px;padding:14px;border-top:1px solid var(--border);color:var(--text-dim);font-size:.62rem;font-family:'JetBrains Mono',monospace}
+@media(max-width:700px){.grid{grid-template-columns:1fr}.hdr{flex-direction:column;align-items:flex-start}.ptab{padding:10px 6px;font-size:.72rem}.bar2{flex-direction:column;align-items:flex-start}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="hdr">
+    <h1>SEA Viral Pulse</h1>
+    <div class="date-pick">
+      <select id="date-sel"><option value="">Loading...</option></select>
+    </div>
+    <div class="stats" id="stats-bar"></div>
+  </div>
+
+  <div class="primary-tabs" id="primary-tabs">
+    <div class="ptab active" data-p="all"><span class="ptab-icon">🌏</span>SEA ALL</div>
+    <div class="ptab" data-p="TH"><span class="ptab-icon">🇹🇭</span>Thailand</div>
+    <div class="ptab" data-p="ID"><span class="ptab-icon">🇮🇩</span>Indonesia</div>
+    <div class="ptab" data-p="PH"><span class="ptab-icon">🇵🇭</span>Philippines</div>
+    <div class="ptab" data-p="global"><span class="ptab-icon">🌐</span>GLOBAL</div>
+  </div>
+
+  <div class="bar2" id="bar2">
+    <div class="bar2-left" id="bar2-left">
+      <div class="cat-row" id="cat-row">
+        <button class="cbtn active" data-c="all">All Tags</button>
+        <button class="cbtn" data-c="gaming">🎮 游戏</button>
+        <button class="cbtn" data-c="comedy">🤣 搞笑</button>
+        <button class="cbtn" data-c="entertainment">🎬 娱乐</button>
+        <button class="cbtn" data-c="horror">👻 恐怖</button>
+        <button class="cbtn" data-c="cute">🐱 萌宠</button>
+        <button class="cbtn" data-c="dance">💃 舞蹈</button>
+        <button class="cbtn" data-c="food">🍜 美食</button>
+      </div>
+      <div class="tag-hint" id="tag-hint"></div>
+    </div>
+    <div class="bar2-right">
+      <select class="ctrl" id="time-filter">
+        <option value="all">ALL TIME</option>
+        <option value="7d">近7天发布</option>
+      </select>
+      <select class="ctrl" id="sort-sel">
+        <option value="p">Plays ↓</option>
+        <option value="l">Likes ↓</option>
+        <option value="cm">Comments ↓</option>
+        <option value="sh">Shares ↓</option>
+        <option value="t">Newest</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="insight-panel" id="insight-panel">
+    <div class="insight-label">AI INSIGHT</div>
+    <div class="insight-text" id="insight-text"></div>
+  </div>
+
+  <div class="loading" id="loading">Loading data...</div>
+  <div class="grid" id="grid"></div>
+  <button class="more" id="more" style="display:none">Load More</button>
+  <div class="empty-msg" id="empty-msg">No videos match current filters</div>
+  <footer>SEA Viral Pulse · TikHub API</footer>
+</div>
+
+<script>
+// 关键词 → 中文说明映射（作为翻译字段缺失时的兜底）
+var HASH_ZH={
+  // 游戏
+  'mobilelegends':'Mobile Legends','mlbb':'Mobile Legends','mlbballstar':'MLBB全明星赛季',
+  'mobilelegendsbangbang':'Mobile Legends',
+  'freefire':'Free Fire: 荒野乱斗','ff':'Free Fire',
+  'genshinimpact':'原神','genshin':'原神',
+  'rovthailand':'传说对决 ROV','rov':'传说对决 ROV',
+  'valorantph':'VALORANT','valorant':'VALORANT',
+  'mlbbph':'Mobile Legends菲律宾','gamingph':'菲律宾游戏','gamingphilippines':'菲律宾游戏',
+  'gamingthailand':'泰国游戏','gameth':'泰国游戏',
+  'gaming':'游戏','mobilegaming':'手机游戏','gameandroid':'安卓游戏','game':'游戏',
+  'onlinegame':'网络游戏','เกม':'游戏','เกมมือถือ':'手机游戏',
+  // 搞笑
+  'komedi':'喜剧搞笑','ngakak':'爆笑搞笑','videolucu':'搞笑视频',
+  'lucu':'印尼搞笑','kocak':'爆笑','humor':'幽默','meme':'梗图',
+  'ตลก':'泰式搞笑','ตลกไทย':'泰国搞笑','comedythailand':'泰国搞笑',
+  'คลิปตลก':'泰国搞笑视频','ฮาๆ':'哈哈好笑','สายฮา':'搞笑系',
+  'pinoycomedy':'菲律宾搞笑','pinoyfunny':'菲律宾趣味','hugot':'扎心语录',
+  'patama':'影射语录','pinoytiktok':'菲律宾TikTok','realtalk':'真心话',
+  // 娱乐
+  'drakor':'韩剧','sinetron':'印尼连续剧','gosip':'明星八卦',
+  'kdrama':'韩剧','gossip':'八卦','artis':'艺人','dramakorea':'韩剧',
+  'ละคร':'泰剧','ดารา':'泰国明星','thaidrama':'泰剧',
+  'ละครไทย':'泰剧','thaibl':'泰国BL剧','blseries':'BL剧','บันเทิง':'娱乐',
+  'kdramaph':'韩剧(菲律宾)','showbiz':'演艺圈','chismis':'明星八卦',
+  'chisme':'明星八卦','opm':'菲律宾流行音乐',
+  // 恐怖
+  'horor':'印尼恐怖','pocong':'印尼鬼魂pocong','hororindonesia':'印尼恐怖',
+  'setan':'印尼鬼怪','jumpscare':'突然吓人','kuntilanak':'坤帝拉娜女鬼','misteri':'灵异',
+  'หนังผี':'泰国鬼片','สยองขวัญ':'泰国恐怖','ผีไทย':'泰国鬼怪',
+  'ผี':'鬼','เรื่องผี':'鬼故事','ความลึกลับ':'神秘灵异',
+  'pinoyhorror':'菲律宾恐怖','aswang':'菲律宾妖怪','multo':'菲律宾鬼怪',
+  'engkanto':'菲律宾精灵','mangkukulam':'菲律宾巫师','analoghorror':'模拟恐怖',
+  // 萌宠/萌娃
+  'bayilucu':'可爱宝宝','anaklucu':'萌娃','kucinglucu':'可爱猫咪',
+  'hewanlucu':'可爱动物','kucing':'猫咪','bayi':'宝宝','cute':'萌',
+  'เด็กน่ารัก':'泰国萌娃','แมวน่ารัก':'可爱猫咪','น่ารัก':'可爱',
+  'สัตว์เลี้ยง':'宠物','ทารก':'婴儿','หมาน่ารัก':'可爱狗狗',
+  'cutebaby':'可爱宝宝','cuteanimals':'可爱动物','pinoycat':'菲律宾猫咪',
+  'babies':'宝宝们','pinoypets':'菲律宾宠物','cutepets':'萌宠',
+  // 舞蹈/挑战
+  'dance':'舞蹈','challenge':'挑战','tiktokdance':'TikTok舞蹈',
+  'joget':'印尼舞蹈','danceindonesia':'印尼舞蹈','viral':'病毒式传播',
+  'เต้น':'泰国舞蹈','dancechallenge':'舞蹈挑战','เต้นออนไลน์':'线上舞蹈','tiktokthai':'泰国TikTok',
+  'pinoydance':'菲律宾舞蹈',
+  // 美食
+  'masak':'烹饪','kuliner':'印尼美食','foodindonesia':'印尼美食',
+  'masakanindo':'印尼菜','resepmasak':'食谱','makanan':'食物',
+  'อาหาร':'泰国美食','อาหารไทย':'泰国料理','ทำอาหาร':'烹饪',
+  'เมนูอร่อย':'美味菜单','อาหารอร่อย':'好吃的','ของกิน':'食物',
+  'foodph':'菲律宾美食','filipinofood':'菲律宾料理','pinoyrecipe':'菲律宾食谱',
+  'lutongbahay':'家常菜','kakainin':'美食',
+};
+var CAT_ZH={'gaming':'游戏','comedy':'搞笑','entertainment':'娱乐','horror':'恐怖/灵异','cute':'萌娃/萌宠','dance':'舞蹈/挑战','food':'美食','trending':'热门排行','global_trending':'全球热门'};
+
+function getZhLabel(it){
+  if(it.zh)return it.zh;
+  var text=((it.d||'')+' '+(it.h||'')).toLowerCase();
+  var tags=text.match(/#[\w฀-๿]+/g)||[];
+  var hits=[];
+  tags.forEach(function(tag){var k=tag.slice(1);if(HASH_ZH[k])hits.push(HASH_ZH[k])});
+  var unique=hits.filter(function(v,i,a){return a.indexOf(v)===i});
+  if(unique.length)return unique.slice(0,2).join(' · ');
+  return CAT_ZH[it.cat]?'['+CAT_ZH[it.cat]+']':'';
+}
+
+var TAG_INFO={
+  gaming:{
+    ID:['mobilelegends','freefire','genshinimpact','gaming','gameandroid','mlbb','mobilegaming','onlinegame'],
+    TH:['rovthailand','เกม','gamingthailand','rov','gaming','เกมมือถือ','gameth'],
+    PH:['mlbbph','valorantph','gamingph','mlbb','gaming','genshinimpact','freefire','gamingphilippines']
+  },
+  comedy:{
+    ID:['komedi','ngakak','videolucu','lucu','kocak','humor','meme'],
+    TH:['ตลก','ตลกไทย','comedythailand','คลิปตลก','ฮาๆ','สายฮา'],
+    PH:['pinoycomedy','pinoyfunny','hugot','patama','pinoytiktok','realtalk']
+  },
+  entertainment:{
+    ID:['drakor','sinetron','gosip','kdrama','gossip','artis','dramakorea'],
+    TH:['ละคร','ดารา','thaidrama','ละครไทย','thaibl','blseries','บันเทิง'],
+    PH:['kdramaph','showbiz','chismis','kdrama','chisme','opm']
+  },
+  horror:{
+    ID:['horor','pocong','hororindonesia','setan','jumpscare','kuntilanak','misteri','analoghorror'],
+    TH:['หนังผี','สยองขวัญ','ผีไทย','ผี','เรื่องผี','ความลึกลับ','analoghorror'],
+    PH:['pinoyhorror','aswang','multo','engkanto','mangkukulam','analoghorror']
+  },
+  cute:{
+    ID:['bayilucu','anaklucu','kucinglucu','hewanlucu','kucing','bayi','cute'],
+    TH:['เด็กน่ารัก','แมวน่ารัก','น่ารัก','สัตว์เลี้ยง','ทารก','หมาน่ารัก'],
+    PH:['cutebaby','cuteanimals','pinoycat','babies','pinoypets','cutepets']
+  },
+  dance:{
+    ID:['dance','challenge','tiktokdance','joget','danceindonesia','viral'],
+    TH:['เต้น','dancechallenge','challenge','เต้นออนไลน์','tiktokthai'],
+    PH:['dancechallenge','pinoydance','tiktokdance','dance','challenge']
+  },
+  food:{
+    ID:['masak','kuliner','foodindonesia','masakanindo','resepmasak','makanan'],
+    TH:['อาหาร','อาหารไทย','ทำอาหาร','เมนูอร่อย','อาหารอร่อย','ของกิน'],
+    PH:['foodph','filipinofood','pinoyrecipe','lutongbahay','kakainin']
+  }
+};
+
+var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[],INSIGHTS=null;
+
+function fmt(n){if(!n)return'0';n=+n;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':n.toString()}
+function dur(s){if(!s)return'';s=+s;return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
+function isW7(t){if(!t)return false;return(Date.now()-new Date(t.replace(' ','T')).getTime())<7*864e5}
+
+function updateHint(){
+  var el=document.getElementById('tag-hint');
+  if(curPrimary==='global'||curCat==='all'){el.innerHTML='';return}
+  var info=TAG_INFO[curCat];if(!info){el.innerHTML='';return}
+  var regions=(curPrimary==='all')?['ID','TH','PH']:[curPrimary];
+  var rn={ID:'🇮🇩 印尼',TH:'🇹🇭 泰国',PH:'🇵🇭 菲律宾'};
+  var parts=[];
+  regions.forEach(function(r){
+    var tags=info[r];if(!tags||!tags.length)return;
+    var chips=tags.map(function(tagName){
+      var tl=tagName.toLowerCase();
+      var zh=HASH_ZH[tl]||'';
+      var count=DATA.filter(function(item){
+        if(item.cat!==curCat||item.r!==r)return false;
+        return (item.h||'').toLowerCase().split(/[\s,]+/).indexOf(tl)>=0;
+      }).length;
+      return '<span class="th"><span class="tn">#'+tagName+'</span>'
+        +(zh?'<span class="tz">'+zh+'</span>':'')
+        +(count>0?'<span class="tc">'+count+'</span>':'')+'</span>';
+    });
+    parts.push('<div><em>'+rn[r]+'</em>'+chips.join('')+'</div>');
+  });
+  el.innerHTML=parts.join('');
+}
+
+function updateBar2(){
+  var isGlobal=curPrimary==='global';
+  document.getElementById('bar2-left').style.display=isGlobal?'none':'';
+  document.getElementById('time-filter').style.display=isGlobal?'none':'';
+}
+
+function mdToHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\n/g,'<br>');
+}
+
+function updateInsight(){
+  var panel=document.getElementById('insight-panel');
+  var textEl=document.getElementById('insight-text');
+  if(!INSIGHTS||curPrimary==='global'){panel.classList.remove('visible');return}
+  var key=curCat==='all'?'all':curCat;
+  var text=INSIGHTS[key];
+  if(!text){panel.classList.remove('visible');return}
+  textEl.innerHTML=mdToHtml(text);
+  panel.classList.add('visible');
+}
+
+function doFilter(){
+  filtered=DATA.filter(function(d){
+    if(curPrimary==='global')return d.cat==='global_trending';
+    if(curPrimary!=='all'&&d.r!==curPrimary)return false;
+    if(d.cat==='global_trending')return false;
+    if(curCat!=='all'&&d.cat!==curCat)return false;
+    if(curTime==='7d'&&!isW7(d.t))return false;
+    return true;
+  });
+  if(curSort==='t')filtered.sort(function(a,b){return(b.t||'').localeCompare(a.t||'')});
+  else filtered.sort(function(a,b){return(+b[curSort]||0)-(+a[curSort]||0)});
+  document.getElementById('stats-bar').innerHTML='<b>'+filtered.length+'</b> / '+DATA.length+' videos';
+}
+
+function card(it,i){
+  var link=it.url||('https://www.tiktok.com/@'+encodeURIComponent(it.au||it.an)+'/video/'+it.id);
+  var img=it.cov?'<img src="'+esc(it.cov)+'" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">':'';
+  var noI='<div class="no-img" style="'+(it.cov?'display:none':'display:flex')+'">▶</div>';
+  var rCls=(it.r||'').toLowerCase();
+  return '<a class="card" href="'+esc(link)+'" target="_blank" rel="noopener" style="animation-delay:'+(i%PAGE*.02)+'s"><div class="card-img">'+img+noI+'<div class="ov"><div class="tri"></div></div><span class="pill pill-dur">'+dur(it.dur)+'</span><span class="pill pill-r '+rCls+'">'+esc(it.r)+'</span></div><div class="card-bd"><div class="card-desc">'+esc(it.d)+'</div>'+(getZhLabel(it)?'<div class="card-zh">'+esc(getZhLabel(it))+'</div>':'')+'<div class="card-author">'+esc(it.au||it.an)+'</div><div class="card-nums"><div class="card-num"><b>'+fmt(it.p)+'</b><small>plays</small></div><div class="card-num"><b>'+fmt(it.l)+'</b><small>likes</small></div><div class="card-num"><b>'+fmt(it.cm)+'</b><small>cmts</small></div><div class="card-num"><b>'+fmt(it.sh)+'</b><small>shares</small></div></div><div class="card-foot"><span class="card-tags">'+esc(it.h)+'</span><span class="card-date">'+(it.t?it.t.split(' ')[0]:'')+'</span></div></div></a>';
+}
+
+function render(){
+  var items=filtered.slice(0,page*PAGE);
+  document.getElementById('grid').innerHTML=items.map(card).join('');
+  document.getElementById('more').style.display=items.length>=filtered.length?'none':'block';
+  document.getElementById('empty-msg').style.display=filtered.length===0?'block':'none';
+  document.getElementById('loading').style.display='none';
+}
+
+function loadDate(dateStr){
+  document.getElementById('loading').style.display='block';
+  document.getElementById('grid').innerHTML='';
+  INSIGHTS=null;updateInsight();
+  fetch('data/'+dateStr+'/insights.json').then(function(r){return r.ok?r.json():null}).then(function(d){
+    INSIGHTS=d;updateInsight();
+  }).catch(function(){});
+  fetch('data/'+dateStr+'/combined.json').then(function(r){return r.json()}).then(function(d){
+    DATA=d;page=1;doFilter();render();
+  }).catch(function(e){
+    document.getElementById('loading').textContent='Failed to load data for '+dateStr;
+  });
+}
+
+// Init: load dates
+fetch('data/dates.json').then(function(r){return r.json()}).then(function(dates){
+  DATES=dates;
+  var sel=document.getElementById('date-sel');
+  sel.innerHTML='';
+  dates.forEach(function(dt){var o=document.createElement('option');o.value=dt;o.textContent=dt;sel.appendChild(o)});
+  if(dates.length)loadDate(dates[0]);
+}).catch(function(){
+  document.getElementById('loading').textContent='No data available';
+});
+
+// Events
+document.getElementById('date-sel').addEventListener('change',function(){loadDate(this.value)});
+document.getElementById('primary-tabs').addEventListener('click',function(e){
+  var t=e.target.closest('.ptab');if(!t)return;
+  this.querySelectorAll('.ptab').forEach(function(x){x.classList.remove('active')});
+  t.classList.add('active');curPrimary=t.dataset.p;
+  page=1;updateBar2();updateHint();updateInsight();doFilter();render();
+});
+document.getElementById('cat-row').addEventListener('click',function(e){
+  var b=e.target.closest('.cbtn');if(!b)return;
+  this.querySelectorAll('.cbtn').forEach(function(x){x.classList.remove('active')});
+  b.classList.add('active');curCat=b.dataset.c;page=1;updateHint();updateInsight();doFilter();render();
+});
+document.getElementById('sort-sel').addEventListener('change',function(){curSort=this.value;page=1;doFilter();render()});
+document.getElementById('time-filter').addEventListener('change',function(){curTime=this.value;page=1;doFilter();render()});
+document.getElementById('more').addEventListener('click',function(){page++;render()});
+
+updateBar2();
+</script>
+</body>
+</html>
