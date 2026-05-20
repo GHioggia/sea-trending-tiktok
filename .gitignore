@@ -1,0 +1,13 @@
+# Secrets
+.env
+
+# Cache (regenerable)
+cache/
+__pycache__/
+
+# Legacy output (data/ is the canonical source)
+output/
+
+# OS
+.DS_Store
+Thumbs.db
