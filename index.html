@@ -356,9 +356,7 @@ document.getElementById('date-sel').addEventListener('change',function(){loadDat
 document.getElementById('primary-tabs').addEventListener('click',function(e){
   var t=e.target.closest('.ptab');if(!t)return;
   this.querySelectorAll('.ptab').forEach(function(x){x.classList.remove('active')});
-  t.classList.add('active');curPrimary=t.dataset.p;curCat='all';
-  document.getElementById('cat-row').querySelectorAll('.cbtn').forEach(function(b){b.classList.remove('active')});
-  document.getElementById('cat-row').querySelector('[data-c="all"]').classList.add('active');
+  t.classList.add('active');curPrimary=t.dataset.p;
   page=1;updateBar2();updateHint();doFilter();render();
 });
 document.getElementById('cat-row').addEventListener('click',function(e){
