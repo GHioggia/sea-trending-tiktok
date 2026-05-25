@@ -290,7 +290,7 @@ var TAG_INFO={
   }
 };
 
-var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[],INSIGHTS=null;
+var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[],INSIGHTS=null,curDateStr='';
 
 function fmt(n){if(!n)return'0';n=+n;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':n.toString()}
 function dur(s){if(!s)return'';s=+s;return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
@@ -365,8 +365,9 @@ function doFilter(){
 
 function card(it,i){
   var link=it.url||('https://www.tiktok.com/@'+encodeURIComponent(it.au||it.an)+'/video/'+it.id);
-  var img=it.cov?'<img src="'+esc(it.cov)+'" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">':'';
-  var noI='<div class="no-img" style="'+(it.cov?'display:none':'display:flex')+'">▶</div>';
+  var covSrc=it.cov?(it.cov.startsWith('http')?it.cov:'data/'+curDateStr+'/'+it.cov):'';
+  var img=covSrc?'<img src="'+esc(covSrc)+'" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">':'';
+  var noI='<div class="no-img" style="'+(covSrc?'display:none':'display:flex')+'">▶</div>';
   var rCls=(it.r||'').toLowerCase();
   return '<a class="card" href="'+esc(link)+'" target="_blank" rel="noopener" style="animation-delay:'+(i%PAGE*.02)+'s"><div class="card-img">'+img+noI+'<div class="ov"><div class="tri"></div></div><span class="pill pill-dur">'+dur(it.dur)+'</span><span class="pill pill-r '+rCls+'">'+esc(it.r)+'</span></div><div class="card-bd"><div class="card-desc">'+esc(it.d)+'</div>'+(getZhLabel(it)?'<div class="card-zh">'+esc(getZhLabel(it))+'</div>':'')+'<div class="card-author">'+esc(it.au||it.an)+'</div><div class="card-nums"><div class="card-num"><b>'+fmt(it.p)+'</b><small>plays</small></div><div class="card-num"><b>'+fmt(it.l)+'</b><small>likes</small></div><div class="card-num"><b>'+fmt(it.cm)+'</b><small>cmts</small></div><div class="card-num"><b>'+fmt(it.sh)+'</b><small>shares</small></div></div><div class="card-foot"><span class="card-tags">'+esc(it.h)+'</span><span class="card-date">'+(it.t?it.t.split(' ')[0]:'')+'</span></div></div></a>';
 }
@@ -380,6 +381,7 @@ function render(){
 }
 
 function loadDate(dateStr){
+  curDateStr=dateStr;
   document.getElementById('loading').style.display='block';
   document.getElementById('grid').innerHTML='';
   INSIGHTS=null;updateInsight();
