@@ -1,6 +1,7 @@
 """
 每周自动化调度脚本
 用法:
+    python3 weekly_job.py thursday   # 周四：抖音 CN 全分类
     python3 weekly_job.py saturday   # 周六：萌宠 + 舞蹈 + 美食
     python3 weekly_job.py sunday     # 周日：搞笑 + 娱乐
     python3 weekly_job.py monday     # 周一：游戏 + 恐怖 → 合并 → 部署 → 通知
@@ -14,15 +15,14 @@ import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 
-from dotenv import load_dotenv
 import httpx
-
-load_dotenv()
 
 from scraper import (
     API_TOKEN,
     scrape_categories,
+    scrape_douyin_categories,
     archive_to_data,
+    download_covers,
     get_today_remaining,
     get_today_usage,
     DAILY_BUDGET,
@@ -30,6 +30,7 @@ from scraper import (
 )
 
 SCHEDULE = {
+    "thursday": {"categories": None, "regions": ["CN"], "platform": "douyin"},
     "friday": {"categories": None, "regions": ["global"]},
     "saturday": {"categories": ["cute", "dance", "food"]},
     "sunday": {"categories": ["comedy", "entertainment"]},
@@ -38,6 +39,7 @@ SCHEDULE = {
 
 DINGTALK_BOTS_FILE = Path("dingtalk_bots.json")
 PAGES_URL = os.getenv("PAGES_URL", "https://ghioggia.github.io/sea-trending-tiktok")
+ROOT = Path(__file__).resolve().parent
 SITE_DIR = Path("_site")
 LOG_DIR = Path("logs")
 
@@ -58,6 +60,7 @@ def run_scrape(day: str):
     config = SCHEDULE[day]
     cats = config.get("categories")
     regions = config.get("regions")
+    platform = config.get("platform", "tiktok")
     monday = get_monday_date()
     label_parts = []
     if cats:
@@ -68,33 +71,104 @@ def run_scrape(day: str):
     print(f"  目标归档日期: {monday}")
     print(f"  今日预算剩余: {get_today_remaining()}/{DAILY_BUDGET}")
 
-    df = scrape_categories(videos_per_tag=30, categories=cats, regions=regions)
+    if platform == "douyin":
+        df = scrape_douyin_categories(videos_per_tag=20, categories=cats)
+    else:
+        df = scrape_categories(videos_per_tag=30, categories=cats, regions=regions)
+
     if df.empty:
         print("  未获取到数据")
         return None
 
     combined_path = archive_to_data(df, target_date=str(monday))
     print(f"  已归档 → {combined_path}")
+    download_covers(combined_path)
     print(f"  今日已用: {get_today_usage()}/{DAILY_BUDGET}")
     return combined_path
 
 
+MAX_WEEKS = 5
+
+
+def cleanup_old_data():
+    """保留最近 MAX_WEEKS 周的数据，删除更早的日期目录"""
+    dates_path = DATA_DIR / "dates.json"
+    if not dates_path.exists():
+        return
+    dates = json.loads(dates_path.read_text(encoding="utf-8"))
+    if len(dates) <= MAX_WEEKS:
+        return
+
+    to_remove = dates[MAX_WEEKS:]
+    dates_kept = dates[:MAX_WEEKS]
+    for d in to_remove:
+        d_dir = DATA_DIR / d
+        if d_dir.exists():
+            shutil.rmtree(d_dir)
+            print(f"  [清理] 已删除过期数据: {d}")
+    dates_path.write_text(json.dumps(dates_kept, ensure_ascii=False), encoding="utf-8")
+    print(f"  [清理] 保留 {len(dates_kept)} 周，删除 {len(to_remove)} 周")
+
+
 def deploy_pages():
     print("\n[部署] 构建 GitHub Pages...")
+    cleanup_old_data()
+
     if SITE_DIR.exists():
         shutil.rmtree(SITE_DIR)
-    SITE_DIR.mkdir()
+
+    remote_url = subprocess.run(
+        ["git", "config", "remote.origin.url"],
+        capture_output=True, text=True, cwd=str(ROOT),
+    ).stdout.strip()
+
+    cloned = False
+    if remote_url:
+        r = subprocess.run(
+            ["git", "clone", "--branch", "gh-pages", "--single-branch",
+             "--depth", "1", remote_url, str(SITE_DIR)],
+            capture_output=True, text=True,
+        )
+        cloned = r.returncode == 0
+
+    if not cloned:
+        SITE_DIR.mkdir(exist_ok=True)
+        subprocess.run(["git", "init"], capture_output=True, text=True, cwd=str(SITE_DIR))
+        subprocess.run(["git", "checkout", "-b", "gh-pages"], capture_output=True, text=True, cwd=str(SITE_DIR))
 
     shutil.copy2("index.html", SITE_DIR / "index.html")
+    if (SITE_DIR / "data").exists():
+        shutil.rmtree(SITE_DIR / "data")
     shutil.copytree("data", SITE_DIR / "data")
 
-    cmd = ["ghp-import", "-n", "-p", "-f", str(SITE_DIR)]
-    print(f"  执行: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"  部署失败: {result.stderr}")
-        raise RuntimeError(f"ghp-import failed: {result.stderr}")
-    print("  部署成功")
+    import os as _os
+    _cwd = _os.getcwd()
+    try:
+        _os.chdir(str(SITE_DIR))
+        subprocess.run(["git", "add", "-A"], capture_output=True, text=True)
+        commit_result = subprocess.run(
+            ["git", "-c", "user.name=bot", "-c", "user.email=bot@scraper",
+             "commit", "-m", f"Deploy {date.today().isoformat()}"],
+            capture_output=True, text=True
+        )
+        if "nothing to commit" in commit_result.stdout + commit_result.stderr:
+            print("  无变更，跳过部署")
+            return
+        push_result = subprocess.run(
+            ["git", "push", "origin", "gh-pages", "-f"],
+            capture_output=True, text=True
+        )
+        if push_result.returncode != 0:
+            push_result = subprocess.run(
+                ["git", "push", str(ROOT), "gh-pages:gh-pages", "-f"],
+                capture_output=True, text=True
+            )
+        if push_result.returncode != 0:
+            print(f"  部署失败: {push_result.stderr}")
+            raise RuntimeError(f"git push failed: {push_result.stderr}")
+        print("  部署成功")
+    finally:
+        _os.chdir(_cwd)
 
     shutil.rmtree(SITE_DIR, ignore_errors=True)
 
@@ -103,7 +177,7 @@ CAT_NAMES = {
     "gaming": "游戏", "comedy": "搞笑", "entertainment": "娱乐",
     "horror": "恐怖", "cute": "萌宠", "dance": "舞蹈", "food": "美食",
 }
-REGION_NAMES = {"ID": "印尼", "TH": "泰国", "PH": "菲律宾"}
+REGION_NAMES = {"ID": "印尼", "TH": "泰国", "PH": "菲律宾", "CN": "中国抖音"}
 FIELDS_TO_KEEP = ["d", "zh", "cat", "r", "p", "l", "cm", "sh", "h"]
 
 CAT_PROMPTS = {
@@ -192,7 +266,12 @@ def _slim(records: list[dict]) -> str:
 
 def _llm_call(prompt: str, max_tokens: int = 512) -> str:
     import anthropic
-    client = anthropic.Anthropic()
+    kwargs = {}
+    base_url = os.environ.get("ANTHROPIC_BASE_URL")
+    auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN")
+    if base_url and auth_token:
+        kwargs = {"base_url": base_url, "api_key": auth_token}
+    client = anthropic.Anthropic(**kwargs)
     msg = client.messages.create(
         model="claude-haiku",
         max_tokens=max_tokens,
@@ -202,7 +281,7 @@ def _llm_call(prompt: str, max_tokens: int = 512) -> str:
 
 
 MIN_VIDEOS_FOR_INSIGHT = 5
-REGIONS_WITH_ALL = {"all": "全东南亚（印尼/泰国/菲律宾）", "ID": "印尼", "TH": "泰国", "PH": "菲律宾", "global": "全球"}
+REGIONS_WITH_ALL = {"all": "全东南亚（印尼/泰国/菲律宾）", "ID": "印尼", "TH": "泰国", "PH": "菲律宾", "global": "全球", "CN": "中国抖音"}
 
 
 def _top_sorted(records: list[dict], n: int) -> list[dict]:
@@ -217,7 +296,7 @@ def generate_insights(records: list[dict], target_date: str) -> dict:
     for region_id, region_desc in REGIONS_WITH_ALL.items():
         region_data = {}
         if region_id == "all":
-            pool = [r for r in records if r.get("cat") != "global_trending"]
+            pool = [r for r in records if r.get("r") not in ("CN",) and r.get("cat") != "global_trending"]
         else:
             pool = [r for r in records if r.get("r") == region_id]
 
@@ -367,7 +446,7 @@ def notify_dingtalk(monday_date: str, records: list[dict], insights: dict):
         f"---\n\n"
         f"📌 **本周行动建议**：{action_line}\n\n"
         f"---\n\n"
-        f"📊 [【传送门】本周TikTok热点视频>>>]({PAGES_URL})"
+        f"📊 [【传送门·需魔法】本周TikTok热点视频>>>]({PAGES_URL})"
     )
     payload = {
         "msgtype": "markdown",
@@ -392,6 +471,16 @@ def notify_dingtalk(monday_date: str, records: list[dict], insights: dict):
             print(f"  [{name}] 异常: {e}")
 
 
+def _notification_sent(monday: str) -> bool:
+    flag = DATA_DIR / monday / ".notified"
+    return flag.exists()
+
+
+def _mark_notification_sent(monday: str):
+    flag = DATA_DIR / monday / ".notified"
+    flag.write_text(date.today().isoformat(), encoding="utf-8")
+
+
 def run_monday():
     combined_path = run_scrape("monday")
 
@@ -410,7 +499,12 @@ def run_monday():
         insights = generate_insights(records, monday)
 
         deploy_pages()
-        notify_dingtalk(monday, records, insights)
+
+        if _notification_sent(monday):
+            print(f"\n[通知] 跳过：{monday} 已发送过通知（防重复）")
+        else:
+            notify_dingtalk(monday, records, insights)
+            _mark_notification_sent(monday)
     else:
         print(f"\n[!] 未找到 {data_file}，跳过部署和通知")
 

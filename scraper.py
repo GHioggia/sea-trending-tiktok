@@ -14,9 +14,24 @@ from pathlib import Path
 
 import httpx
 import pandas as pd
-from dotenv import load_dotenv
 
-load_dotenv()
+
+def _load_dotenv(path=".env"):
+    """手动加载 .env 文件，无需 python-dotenv 依赖"""
+    env_path = Path(path)
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key, val = key.strip(), val.strip()
+        if key not in os.environ:
+            os.environ[key] = val
+
+
+_load_dotenv(Path(__file__).parent / ".env")
 
 BASE_URL = "https://api.tikhub.io"
 API_TOKEN = os.getenv("TIKHUB_API_TOKEN", "")
@@ -87,7 +102,7 @@ CATEGORY_TAGS = {
             "ID": ["dance", "challenge", "tiktokdance", "joget", "danceindonesia", "viral"],
             "TH": ["เต้น", "dancechallenge", "challenge", "เต้นออนไลน์", "tiktokthai"],
             "PH": ["dancechallenge", "pinoydance", "tiktokdance", "dance", "challenge"],
-            "global": ["dance", "dancechallenge", "tiktokdance", "choreography", "viral"],
+            "global": ["dance", "dancechallenge", "tiktokdance", "choreography", "viral", "challenge"],
         },
     },
     "food": {
@@ -468,6 +483,285 @@ def scrape_categories(videos_per_tag: int = 30, categories: list[str] | None = N
     return df
 
 
+# ─── Douyin (抖音) ──────────────────────────────────────────────────────────────
+
+DOUYIN_CATEGORY_TAGS = {
+    "gaming": {
+        "name": "游戏",
+        "tags": {
+            "CN": ["游戏", "手游", "原神", "王者荣耀", "和平精英", "英雄联盟手游", "明日方舟", "游戏解说"],
+        },
+    },
+    "comedy": {
+        "name": "沙雕搞笑",
+        "tags": {
+            "CN": ["搞笑", "沙雕", "整活", "幽默", "搞笑视频", "喜剧", "段子"],
+        },
+    },
+    "entertainment": {
+        "name": "娱乐(明星/剧集/电影)",
+        "tags": {
+            "CN": ["娱乐", "明星", "追剧", "国产剧", "电影", "综艺", "八卦"],
+        },
+    },
+    "horror": {
+        "name": "恐怖/灵异",
+        "tags": {
+            "CN": ["恐怖", "灵异", "鬼故事", "悬疑", "恐怖游戏", "都市传说", "民间故事"],
+        },
+    },
+    "cute": {
+        "name": "萌娃/萌宠",
+        "tags": {
+            "CN": ["萌宠", "可爱", "萌娃", "猫咪", "狗狗", "宠物", "治愈"],
+        },
+    },
+    "dance": {
+        "name": "舞蹈/挑战",
+        "tags": {
+            "CN": ["舞蹈", "挑战", "街舞", "古风舞蹈", "舞蹈教学", "热舞"],
+        },
+    },
+    "food": {
+        "name": "美食",
+        "tags": {
+            "CN": ["美食", "吃播", "探店", "家常菜", "烹饪", "小吃", "火锅"],
+        },
+    },
+}
+
+
+def fetch_douyin_challenge_search(keyword: str) -> dict:
+    """搜索抖音话题，返回话题列表（含 cid）"""
+    url = f"{BASE_URL}/api/v1/douyin/search/fetch_challenge_search_v1"
+    params = {"keyword": keyword, "cursor": 0}
+
+    cache_key = "/api/v1/douyin/search/fetch_challenge_search_v1"
+    cached = _get_cached_response(cache_key, params)
+    if cached is not None:
+        return cached
+
+    if not check_budget():
+        raise RuntimeError("今日 API 预算已用完")
+
+    with httpx.Client(timeout=30) as client:
+        resp = client.post(url, headers=get_headers(), json=params)
+        resp.raise_for_status()
+        data = resp.json()
+
+    _increment_budget()
+    _set_cached_response(cache_key, params, data)
+    return data
+
+
+def fetch_douyin_hashtag_videos(ch_id: str, count: int = 20, cursor: int = 0) -> dict:
+    """获取抖音话题标签下的视频"""
+    return api_get("/api/v1/douyin/app/v3/fetch_hashtag_video_list", {
+        "ch_id": ch_id,
+        "count": count,
+        "cursor": cursor,
+        "sort_type": 0,
+    })
+
+
+def fetch_douyin_video_search(keyword: str, count: int = 20) -> dict:
+    """按关键词搜索抖音视频（按点赞排序，最近一周），作为标签接口的降级方案"""
+    url = f"{BASE_URL}/api/v1/douyin/search/fetch_video_search_v1"
+    params = {
+        "keyword": keyword,
+        "cursor": 0,
+        "sort_type": "1",
+        "publish_time": "7",
+        "filter_duration": "0",
+        "content_type": "0",
+    }
+
+    cache_key = "/api/v1/douyin/search/fetch_video_search_v1"
+    cached = _get_cached_response(cache_key, params)
+    if cached is not None:
+        return cached
+
+    if not check_budget():
+        raise RuntimeError("今日 API 预算已用完")
+
+    with httpx.Client(timeout=30) as client:
+        resp = client.post(url, headers=get_headers(), json=params)
+        resp.raise_for_status()
+        data = resp.json()
+
+    _increment_budget()
+    _set_cached_response(cache_key, params, data)
+    return data
+
+
+def resolve_douyin_tag_ids(tags: list[str]) -> dict[str, str]:
+    """批量解析抖音话题名称到 cid（优先读本地缓存，使用 douyin: 前缀）"""
+    tag_cache = _load_tag_cache()
+    tag_map = {}
+    tags_to_fetch = []
+
+    for tag in tags:
+        cache_key = f"douyin:{tag}"
+        if cache_key in tag_cache:
+            tag_map[tag] = tag_cache[cache_key]
+            print(f"    #{tag} -> cid: {tag_cache[cache_key]} [cached]")
+        else:
+            tags_to_fetch.append(tag)
+
+    for tag in tags_to_fetch:
+        if not check_budget():
+            print(f"    #{tag} -> 跳过 (预算不足)")
+            continue
+        try:
+            data = fetch_douyin_challenge_search(tag)
+            challenge_list = data.get("data", {}).get("challenge_list", [])
+            cid = ""
+            for item in challenge_list:
+                info = item.get("challenge_info", {})
+                if info.get("cha_name") == tag:
+                    cid = str(info.get("cid", ""))
+                    break
+            if not cid and challenge_list:
+                cid = str(challenge_list[0].get("challenge_info", {}).get("cid", ""))
+            if cid:
+                tag_map[tag] = cid
+                tag_cache[f"douyin:{tag}"] = cid
+                print(f"    #{tag} -> cid: {cid} [fetched]")
+            else:
+                print(f"    #{tag} -> 未找到")
+        except Exception as e:
+            print(f"    #{tag} -> 错误: {e}")
+        time.sleep(0.5)
+
+    _save_tag_cache(tag_cache)
+    return tag_map
+
+
+def parse_douyin_video(item: dict, tag_name: str, category: str) -> dict:
+    """解析抖音 API 返回的视频对象"""
+    video = item.get("video", {})
+    author = item.get("author", {})
+    stats = item.get("statistics", {})
+
+    cover_urls = (video.get("cover") or {}).get("url_list", [])
+    cover_url = cover_urls[0] if cover_urls else ""
+
+    create_time = item.get("create_time", 0)
+    if isinstance(create_time, int) and create_time > 0:
+        create_time_str = datetime.fromtimestamp(create_time).strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        create_time_str = str(create_time)
+
+    aweme_id = str(item.get("aweme_id", ""))
+    duration_ms = video.get("duration", 0)
+    duration_sec = int(duration_ms / 1000) if duration_ms > 100 else duration_ms
+
+    cha_list = item.get("cha_list") or item.get("text_extra") or []
+    hashtags = []
+    for c in cha_list:
+        name = c.get("cha_name") or c.get("hashtag_name", "")
+        if name:
+            hashtags.append(name)
+
+    return {
+        "video_id": f"dy_{aweme_id}",
+        "desc": item.get("desc", ""),
+        "create_time": create_time_str,
+        "author_nickname": author.get("nickname", ""),
+        "author_unique_id": author.get("unique_id", "") or author.get("short_id", ""),
+        "play_count": stats.get("digg_count", 0),
+        "like_count": stats.get("digg_count", 0),
+        "comment_count": stats.get("comment_count", 0),
+        "share_count": stats.get("share_count", 0),
+        "duration": duration_sec,
+        "cover_url": cover_url,
+        "play_url": "",
+        "music_title": (item.get("music") or {}).get("title", ""),
+        "hashtags": ", ".join(hashtags) if hashtags else tag_name,
+        "region": "CN",
+        "source": f"douyin_tag:{tag_name}",
+        "category": category,
+        "tiktok_url": f"https://www.douyin.com/video/{aweme_id}",
+    }
+
+
+def scrape_douyin_categories(videos_per_tag: int = 20, categories: list[str] | None = None) -> pd.DataFrame:
+    """按分类标签抓取抖音视频"""
+    cats = {k: v for k, v in DOUYIN_CATEGORY_TAGS.items() if k in categories} if categories else DOUYIN_CATEGORY_TAGS
+    all_tags = []
+    for cat_info in cats.values():
+        for tags in cat_info["tags"].values():
+            all_tags.extend(tags)
+
+    unique_tags = list(dict.fromkeys(all_tags))
+    print(f"\n[抖音] 分类标签视频 (预计 {len(unique_tags)} 次请求, 不含标签解析)")
+    print(f"  分类: {', '.join(c['name'] for c in cats.values())}")
+
+    print(f"\n  解析抖音话题 ID...")
+    tag_map = resolve_douyin_tag_ids(unique_tags)
+
+    all_videos = []
+    for cat_id, cat_info in cats.items():
+        cat_name = cat_info["name"]
+        print(f"\n  ── {cat_name} ──")
+        for tag_name in cat_info["tags"].get("CN", []):
+            tag_id = tag_map.get(tag_name)
+            if not tag_id:
+                print(f"    #{tag_name}: 无 ID, 跳过")
+                continue
+            if not check_budget():
+                print(f"    预算不足，停止")
+                break
+            try:
+                data = fetch_douyin_hashtag_videos(ch_id=tag_id, count=videos_per_tag)
+                mix_list = data.get("data", {}).get("mix_list") or []
+                aweme_list = data.get("data", {}).get("aweme_list") or []
+                items = []
+                for m in mix_list:
+                    aweme_info = m.get("aweme_info", m)
+                    if aweme_info.get("aweme_id"):
+                        items.append(aweme_info)
+                for a in aweme_list:
+                    if a and a.get("aweme_id"):
+                        items.append(a)
+                if items:
+                    print(f"    #{tag_name}: {len(items)} 条")
+                    for item in items:
+                        all_videos.append(parse_douyin_video(item, tag_name, cat_id))
+                else:
+                    raise httpx.HTTPStatusError("empty", request=None, response=None)
+            except RuntimeError:
+                print("    预算已用完")
+                break
+            except Exception:
+                if not check_budget():
+                    print("    预算已用完")
+                    break
+                try:
+                    data = fetch_douyin_video_search(keyword=tag_name, count=videos_per_tag)
+                    search_list = data.get("data", {}).get("aweme_list") or []
+                    items = []
+                    for item in search_list:
+                        aweme_info = item.get("aweme_info", item)
+                        if aweme_info.get("aweme_id"):
+                            items.append(aweme_info)
+                    print(f"    #{tag_name}: {len(items)} 条 [搜索降级]")
+                    for item in items:
+                        all_videos.append(parse_douyin_video(item, tag_name, cat_id))
+                except RuntimeError:
+                    print("    预算已用完")
+                    break
+                except Exception as e2:
+                    print(f"    #{tag_name}: 搜索也失败 {e2}")
+            time.sleep(0.8)
+
+    df = pd.DataFrame(all_videos)
+    if not df.empty:
+        df = df.drop_duplicates(subset=["video_id"], keep="first")
+        print(f"\n  合计: {len(df)} 条独立视频 (去重后)")
+    return df
+
+
 # ─── Archive to data/<date>/ ──────────────────────────────────────────────────
 
 DATA_DIR = Path("data")
@@ -519,7 +813,78 @@ def archive_to_data(df: pd.DataFrame, target_date: str | None = None) -> Path:
     return combined_path
 
 
-def save_results(df: pd.DataFrame, prefix: str = "data"):
+def download_covers(combined_path: Path, max_width: int = 280, quality: int = 70, max_workers: int = 20):
+    """下载 combined.json 中的封面图，压缩为 WebP 缩略图存储到本地"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from io import BytesIO
+    from PIL import Image
+
+    proxy = os.getenv("COVER_PROXY", os.getenv("HTTPS_PROXY", ""))
+
+    records = json.loads(combined_path.read_text(encoding="utf-8"))
+    covers_dir = combined_path.parent / "covers"
+    covers_dir.mkdir(exist_ok=True)
+
+    to_download = []
+    for r in records:
+        cov = r.get("cov", "")
+        if not cov or not cov.startswith("http"):
+            continue
+        vid = r.get("id", "")
+        if not vid:
+            continue
+        out_file = covers_dir / f"{vid}.webp"
+        if out_file.exists():
+            r["cov"] = f"covers/{vid}.webp"
+            continue
+        to_download.append((r, cov, out_file))
+
+    if not to_download:
+        print(f"  [封面] 无需下载（已有 {len(records)} 条本地封面）")
+        combined_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
+        return combined_path
+
+    print(f"  [封面] 需下载 {len(to_download)} 张，并发 {max_workers}...")
+    if proxy:
+        print(f"  [封面] 使用代理: {proxy}")
+    success = 0
+    failed = 0
+
+    client = httpx.Client(timeout=15, follow_redirects=True, proxy=proxy or None)
+
+    def _download_one(item):
+        record, url, out_file = item
+        try:
+            resp = client.get(url)
+            if resp.status_code != 200:
+                return False
+            img = Image.open(BytesIO(resp.content))
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            w, h = img.size
+            if w > max_width:
+                ratio = max_width / w
+                img = img.resize((max_width, int(h * ratio)), Image.LANCZOS)
+            img.save(out_file, "WEBP", quality=quality)
+            return True
+        except Exception:
+            return False
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_download_one, item): item for item in to_download}
+        for future in as_completed(futures):
+            item = futures[future]
+            record, url, out_file = item
+            if future.result():
+                record["cov"] = f"covers/{record['id']}.webp"
+                success += 1
+            else:
+                failed += 1
+
+    client.close()
+    combined_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
+    print(f"  [封面] 完成: 成功 {success}, 失败 {failed}")
+    return combined_path
     if df.empty:
         print("  没有数据可保存")
         return None

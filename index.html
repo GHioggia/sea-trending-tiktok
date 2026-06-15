@@ -40,6 +40,7 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(circle 
 .ptab[data-p="TH"].active{background:linear-gradient(180deg,rgba(255,171,0,.1),transparent)}.ptab[data-p="TH"].active::after{background:var(--gold)}
 .ptab[data-p="ID"].active{background:linear-gradient(180deg,rgba(229,57,53,.1),transparent)}.ptab[data-p="ID"].active::after{background:#e53935}
 .ptab[data-p="PH"].active{background:linear-gradient(180deg,rgba(68,138,255,.1),transparent)}.ptab[data-p="PH"].active::after{background:var(--blue)}
+.ptab[data-p="CN"].active{background:linear-gradient(180deg,rgba(255,68,68,.12),transparent)}.ptab[data-p="CN"].active::after{background:#ff4444}
 .ptab .ptab-icon{display:block;font-size:1.1rem;margin-bottom:2px}
 
 /* Second Bar */
@@ -80,7 +81,7 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(circle 
 .pill{position:absolute;padding:2px 7px;border-radius:3px;font-size:.58rem;font-weight:700;letter-spacing:.3px}
 .pill-dur{bottom:5px;right:5px;background:rgba(0,0,0,.8);color:#fff;font-family:'JetBrains Mono',monospace}
 .pill-r{top:5px;left:5px;text-transform:uppercase}
-.pill-r.id{background:#e53935;color:#fff}.pill-r.th{background:var(--gold);color:#000}.pill-r.ph{background:var(--blue);color:#fff}.pill-r.global{background:var(--cyan);color:#000}
+.pill-r.id{background:#e53935;color:#fff}.pill-r.th{background:var(--gold);color:#000}.pill-r.ph{background:var(--blue);color:#fff}.pill-r.global{background:var(--cyan);color:#000}.pill-r.cn{background:#ff4444;color:#fff}
 .card-bd{padding:11px}
 .card-desc{font-size:.76rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:3px;min-height:2.1em}
 .card-zh{font-size:.68rem;color:#9898b8;line-height:1.3;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:5px;font-style:italic}
@@ -125,6 +126,7 @@ footer{text-align:center;margin-top:32px;padding:14px;border-top:1px solid var(-
     <div class="ptab" data-p="ID"><span class="ptab-icon">🇮🇩</span>Indonesia</div>
     <div class="ptab" data-p="PH"><span class="ptab-icon">🇵🇭</span>Philippines</div>
     <div class="ptab" data-p="global"><span class="ptab-icon">🌐</span>GLOBAL</div>
+    <div class="ptab" data-p="CN"><span class="ptab-icon">🇨🇳</span>抖音 CN</div>
   </div>
 
   <div class="bar2" id="bar2">
@@ -241,47 +243,54 @@ var TAG_INFO={
     ID:['mobilelegends','freefire','genshinimpact','gaming','gameandroid','mlbb','mobilegaming','onlinegame'],
     TH:['rovthailand','เกม','gamingthailand','rov','gaming','เกมมือถือ','gameth'],
     PH:['mlbbph','valorantph','gamingph','mlbb','gaming','genshinimpact','freefire','gamingphilippines'],
-    global:['gaming','horrorgame','indiegame','mobilegame','gamer']
+    global:['gaming','horrorgame','indiegame','mobilegame','gamer'],
+    CN:['游戏','手游','原神','王者荣耀','和平精英','英雄联盟手游','明日方舟','游戏解说']
   },
   comedy:{
     ID:['komedi','ngakak','videolucu','lucu','kocak','humor','meme'],
     TH:['ตลก','ตลกไทย','comedythailand','คลิปตลก','ฮาๆ','สายฮา'],
     PH:['pinoycomedy','pinoyfunny','hugot','patama','pinoytiktok','realtalk'],
-    global:['funny','meme','comedy','prank','humor']
+    global:['funny','meme','comedy','prank','humor'],
+    CN:['搞笑','沙雕','整活','幽默','搞笑视频','喜剧','段子']
   },
   entertainment:{
     ID:['drakor','sinetron','gosip','kdrama','gossip','artis','dramakorea'],
     TH:['ละคร','ดารา','thaidrama','ละครไทย','thaibl','blseries','บันเทิง'],
     PH:['kdramaph','showbiz','chismis','kdrama','chisme','opm'],
-    global:['kdrama','celebrity','trending','viral','movie']
+    global:['kdrama','celebrity','trending','viral','movie'],
+    CN:['娱乐','明星','追剧','国产剧','电影','综艺','八卦']
   },
   horror:{
     ID:['horor','pocong','hororindonesia','setan','jumpscare','kuntilanak','misteri','analoghorror'],
     TH:['หนังผี','สยองขวัญ','ผีไทย','ผี','เรื่องผี','ความลึกลับ','analoghorror'],
     PH:['pinoyhorror','aswang','multo','engkanto','mangkukulam','analoghorror'],
-    global:['horror','scary','scaryprank','jumpscare','creepy','analoghorror']
+    global:['horror','scary','scaryprank','jumpscare','creepy','analoghorror'],
+    CN:['恐怖','灵异','鬼故事','悬疑','恐怖游戏','都市传说','民间故事']
   },
   cute:{
     ID:['bayilucu','anaklucu','kucinglucu','hewanlucu','kucing','bayi','cute'],
     TH:['เด็กน่ารัก','แมวน่ารัก','น่ารัก','สัตว์เลี้ยง','ทารก','หมาน่ารัก'],
     PH:['cutebaby','cuteanimals','pinoycat','babies','pinoypets','cutepets'],
-    global:['cute','cuteanimals','cutebaby','pets','catsoftiktok']
+    global:['cute','cuteanimals','cutebaby','pets','catsoftiktok'],
+    CN:['萌宠','可爱','萌娃','猫咪','狗狗','宠物','治愈']
   },
   dance:{
     ID:['dance','challenge','tiktokdance','joget','danceindonesia','viral'],
     TH:['เต้น','dancechallenge','challenge','เต้นออนไลน์','tiktokthai'],
     PH:['dancechallenge','pinoydance','tiktokdance','dance','challenge'],
-    global:['dance','dancechallenge','tiktokdance','choreography','viral']
+    global:['dance','dancechallenge','tiktokdance','choreography','viral'],
+    CN:['舞蹈','挑战','街舞','古风舞蹈','舞蹈教学','热舞']
   },
   food:{
     ID:['masak','kuliner','foodindonesia','masakanindo','resepmasak','makanan'],
     TH:['อาหาร','อาหารไทย','ทำอาหาร','เมนูอร่อย','อาหารอร่อย','ของกิน'],
     PH:['foodph','filipinofood','pinoyrecipe','lutongbahay','kakainin'],
-    global:['food','cooking','recipe','foodtiktok','streetfood']
+    global:['food','cooking','recipe','foodtiktok','streetfood'],
+    CN:['美食','吃播','探店','家常菜','烹饪','小吃','火锅']
   }
 };
 
-var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[],INSIGHTS=null;
+var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[],INSIGHTS=null,curDateStr='';
 
 function fmt(n){if(!n)return'0';n=+n;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':n.toString()}
 function dur(s){if(!s)return'';s=+s;return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
@@ -292,8 +301,8 @@ function updateHint(){
   var el=document.getElementById('tag-hint');
   if(curPrimary==='global'||curCat==='all'){el.innerHTML='';return}
   var info=TAG_INFO[curCat];if(!info){el.innerHTML='';return}
-  var regions=(curPrimary==='all')?['ID','TH','PH']:[curPrimary];
-  var rn={ID:'🇮🇩 印尼',TH:'🇹🇭 泰国',PH:'🇵🇭 菲律宾',global:'🌐 全球'};
+  var regions=(curPrimary==='all')?['ID','TH','PH']:(curPrimary==='CN'?['CN']:[curPrimary]);
+  var rn={ID:'🇮🇩 印尼',TH:'🇹🇭 泰国',PH:'🇵🇭 菲律宾',global:'🌐 全球',CN:'🇨🇳 抖音CN'};
   var parts=[];
   regions.forEach(function(r){
     var tags=info[r];if(!tags||!tags.length)return;
@@ -321,7 +330,7 @@ function mdToHtml(s){
     .replace(/\n/g,'<br>');
 }
 
-var REGION_LABEL={'all':'东南亚','ID':'印尼','TH':'泰国','PH':'菲律宾','global':'全球'};
+var REGION_LABEL={'all':'东南亚','ID':'印尼','TH':'泰国','PH':'菲律宾','global':'全球','CN':'中国抖音'};
 var CAT_LABEL={'all':'全类型','gaming':'游戏','comedy':'搞笑','entertainment':'娱乐','horror':'恐怖','cute':'萌宠','dance':'舞蹈','food':'美食'};
 
 function updateInsight(){
@@ -343,7 +352,8 @@ function updateInsight(){
 function doFilter(){
   filtered=DATA.filter(function(d){
     if(curPrimary==='global'){if(d.r!=='global')return false;}
-    else{if(d.r==='global')return false;if(curPrimary!=='all'&&d.r!==curPrimary)return false;}
+    else if(curPrimary==='CN'){if(d.r!=='CN')return false;}
+    else{if(d.r==='global'||d.r==='CN')return false;if(curPrimary!=='all'&&d.r!==curPrimary)return false;}
     if(curCat!=='all'&&d.cat!==curCat)return false;
     if(curTime==='7d'&&!isW7(d.t))return false;
     return true;
@@ -355,8 +365,9 @@ function doFilter(){
 
 function card(it,i){
   var link=it.url||('https://www.tiktok.com/@'+encodeURIComponent(it.au||it.an)+'/video/'+it.id);
-  var img=it.cov?'<img src="'+esc(it.cov)+'" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">':'';
-  var noI='<div class="no-img" style="'+(it.cov?'display:none':'display:flex')+'">▶</div>';
+  var covSrc=it.cov?(it.cov.startsWith('http')?it.cov:'data/'+curDateStr+'/'+it.cov):'';
+  var img=covSrc?'<img src="'+esc(covSrc)+'" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">':'';
+  var noI='<div class="no-img" style="'+(covSrc?'display:none':'display:flex')+'">▶</div>';
   var rCls=(it.r||'').toLowerCase();
   return '<a class="card" href="'+esc(link)+'" target="_blank" rel="noopener" style="animation-delay:'+(i%PAGE*.02)+'s"><div class="card-img">'+img+noI+'<div class="ov"><div class="tri"></div></div><span class="pill pill-dur">'+dur(it.dur)+'</span><span class="pill pill-r '+rCls+'">'+esc(it.r)+'</span></div><div class="card-bd"><div class="card-desc">'+esc(it.d)+'</div>'+(getZhLabel(it)?'<div class="card-zh">'+esc(getZhLabel(it))+'</div>':'')+'<div class="card-author">'+esc(it.au||it.an)+'</div><div class="card-nums"><div class="card-num"><b>'+fmt(it.p)+'</b><small>plays</small></div><div class="card-num"><b>'+fmt(it.l)+'</b><small>likes</small></div><div class="card-num"><b>'+fmt(it.cm)+'</b><small>cmts</small></div><div class="card-num"><b>'+fmt(it.sh)+'</b><small>shares</small></div></div><div class="card-foot"><span class="card-tags">'+esc(it.h)+'</span><span class="card-date">'+(it.t?it.t.split(' ')[0]:'')+'</span></div></div></a>';
 }
@@ -370,6 +381,7 @@ function render(){
 }
 
 function loadDate(dateStr){
+  curDateStr=dateStr;
   document.getElementById('loading').style.display='block';
   document.getElementById('grid').innerHTML='';
   INSIGHTS=null;updateInsight();
