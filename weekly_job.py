@@ -305,6 +305,8 @@ def _llm_call(prompt: str, max_tokens: int = 512) -> str:
     base_url = os.environ.get("ANTHROPIC_BASE_URL")
     auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN")
     if base_url and auth_token:
+        # Claude Code proxy listens on /v1/messages, SDK appends /messages to base_url
+        base_url = base_url.replace("/v1/anthropic", "/v1")
         kwargs = {"base_url": base_url, "api_key": auth_token}
     client = anthropic.Anthropic(**kwargs)
     msg = client.messages.create(
