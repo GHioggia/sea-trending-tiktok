@@ -299,22 +299,36 @@ def _slim(records: list[dict]) -> str:
     return json.dumps(slim, ensure_ascii=False, indent=1)
 
 
-def _llm_call(prompt: str, max_tokens: int = 512) -> str:
+def _llm_call(prompt: str, max_tokens: int = 1024) -> str:
+    import time
     import anthropic
     kwargs = {}
     base_url = os.environ.get("ANTHROPIC_BASE_URL")
     auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN")
     if base_url and auth_token:
-        # Claude Code proxy listens on /v1/messages, SDK appends /messages to base_url
+        # ducky 代理要求 Bearer 鉴权（auth_token），不能用 x-api-key
         base_url = base_url.replace("/v1/anthropic", "/v1")
-        kwargs = {"base_url": base_url, "api_key": auth_token}
+        kwargs = {"base_url": base_url, "auth_token": auth_token}
     client = anthropic.Anthropic(**kwargs)
-    msg = client.messages.create(
-        model="claude-haiku",
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return msg.content[0].text.strip()
+    last_err = None
+    for attempt in range(5):
+        try:
+            msg = client.messages.create(
+                model=os.environ.get("ANTHROPIC_MODEL", "glm-5.2"),
+                max_tokens=max_tokens,
+                thinking={"type": "disabled"},
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return "".join(
+                b.text for b in msg.content if getattr(b, "type", None) == "text"
+            ).strip()
+        except Exception as e:
+            last_err = e
+            s = str(e)
+            quota = "429" in s or "Throttling" in s or "quota" in s.lower()
+            if attempt < 4:
+                time.sleep(60 if quota else 3 * (attempt + 1))
+    raise last_err
 
 
 MIN_VIDEOS_FOR_INSIGHT = 5
@@ -461,7 +475,7 @@ def notify_dingtalk(monday_date: str, records: list[dict], insights: dict):
         body = _llm_call(DINGTALK_PROMPT_TPL.format(
             cat_insights=cat_insights,
             all_insight=all_insights.get("all", ""),
-        ), max_tokens=1024)
+        ), max_tokens=2048)
     except Exception as e:
         print(f"  文案生成失败: {e}")
         body = insights.get("summary", "本周洞察已生成，请查看完整报告。")
