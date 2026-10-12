@@ -7,7 +7,9 @@
     python3 weekly_job.py monday     # 周一：游戏 + 恐怖 → 合并 → 部署 → 通知
 """
 
+import argparse
 import os
+import tempfile
 import sys
 import json
 import shutil
@@ -47,7 +49,8 @@ SSL_CA_CERT = os.getenv("SSL_CERT_FILE") or (
     else None
 )
 ROOT = Path(__file__).resolve().parent
-SITE_DIR = Path("_site")
+DATA_DIR = ROOT / "data"
+SITE_DIR = ROOT / "_site"
 LOG_DIR = Path("logs")
 
 
@@ -97,9 +100,10 @@ def run_scrape(day: str):
 MAX_WEEKS = 5
 
 
-def cleanup_old_data():
+def cleanup_old_data(data_dir=None):
     """保留最近 MAX_WEEKS 周的数据，删除更早的日期目录"""
-    dates_path = DATA_DIR / "dates.json"
+    data_dir = DATA_DIR if data_dir is None else Path(data_dir)
+    dates_path = data_dir / "dates.json"
     if not dates_path.exists():
         return
     dates = json.loads(dates_path.read_text(encoding="utf-8"))
@@ -109,7 +113,7 @@ def cleanup_old_data():
     to_remove = dates[MAX_WEEKS:]
     dates_kept = dates[:MAX_WEEKS]
     for d in to_remove:
-        d_dir = DATA_DIR / d
+        d_dir = data_dir / d
         if d_dir.exists():
             shutil.rmtree(d_dir)
             print(f"  [清理] 已删除过期数据: {d}")
@@ -131,10 +135,8 @@ def _git_push(repo_url: str, refspec: str, cwd: str | None = None, force: bool =
     return r
 
 
-def deploy_pages():
+def deploy_pages(retain_history=False):
     print("\n[部署] 构建 GitHub Pages...")
-    cleanup_old_data()
-
     if SITE_DIR.exists():
         shutil.rmtree(SITE_DIR)
 
@@ -153,14 +155,10 @@ def deploy_pages():
         cloned = r.returncode == 0
 
     if not cloned:
-        SITE_DIR.mkdir(exist_ok=True)
-        subprocess.run(["git", "init"], capture_output=True, text=True, cwd=str(SITE_DIR))
-        subprocess.run(["git", "checkout", "-b", "gh-pages"], capture_output=True, text=True, cwd=str(SITE_DIR))
+        raise RuntimeError("Cannot read gh-pages; refusing to replace published history")
 
-    shutil.copy2("index.html", SITE_DIR / "index.html")
-    if (SITE_DIR / "data").exists():
-        shutil.rmtree(SITE_DIR / "data")
-    shutil.copytree("data", SITE_DIR / "data")
+    shutil.copy2(ROOT / "index.html", SITE_DIR / "index.html")
+    stage_publication(SITE_DIR / "data", retain_history=retain_history)
 
     import os as _os
     _cwd = _os.getcwd()
@@ -175,7 +173,9 @@ def deploy_pages():
         if "nothing to commit" in commit_result.stdout + commit_result.stderr:
             print("  无变更，跳过部署")
             return
-        push_result = _git_push(GITHUB_REPO, "gh-pages:gh-pages", force=True)
+        if commit_result.returncode != 0:
+            raise RuntimeError(f"git commit failed: {commit_result.stderr}")
+        push_result = _git_push(GITHUB_REPO, "gh-pages:gh-pages")
         if push_result.returncode != 0:
             print(f"  部署失败: {push_result.stderr}")
             raise RuntimeError(f"git push failed: {push_result.stderr}")
@@ -309,7 +309,7 @@ def _llm_call(prompt: str, max_tokens: int = 1024) -> str:
         # ducky 代理要求 Bearer 鉴权（auth_token），不能用 x-api-key
         base_url = base_url.replace("/v1/anthropic", "/v1")
         kwargs = {"base_url": base_url, "auth_token": auth_token}
-    client = anthropic.Anthropic(**kwargs)
+    client = anthropic.Anthropic(timeout=60, max_retries=0, **kwargs)
     last_err = None
     for attempt in range(5):
         try:
@@ -339,6 +339,106 @@ def _top_sorted(records: list[dict], n: int) -> list[dict]:
     return sorted(records, key=lambda x: (x.get("sh", 0) or 0), reverse=True)[:n]
 
 
+def _read_dates(data_dir):
+    dates = json.loads((Path(data_dir) / "dates.json").read_text(encoding="utf-8"))
+    if not isinstance(dates, list) or not dates:
+        raise ValueError("dates.json must be a nonempty date list")
+    for target in dates:
+        if not isinstance(target, str) or date.fromisoformat(target).isoformat() != target:
+            raise ValueError(f"Invalid report date: {target!r}")
+    if len(set(dates)) != len(dates):
+        raise ValueError("Duplicate report dates")
+    return dates
+
+
+def _read_records(data_file):
+    records = json.loads(data_file.read_text(encoding="utf-8"))
+    if not isinstance(records, list) or not records or not all(isinstance(r, dict) for r in records):
+        raise ValueError(f"{data_file}: expected nonempty video records")
+    return records
+
+
+def _region_pool(records, region_id):
+    if region_id == "all":
+        return [r for r in records if r.get("r") not in ("CN",) and r.get("cat") != "global_trending"]
+    return [r for r in records if r.get("r") == region_id]
+
+
+def validate_insights(records, insights, target_date):
+    """Match dimensions generated for this archive, including minimum sample size."""
+    if not isinstance(insights, dict) or insights.get("date") != target_date:
+        raise ValueError(f"{target_date}: missing or mismatched insight date")
+    missing = []
+    for region_id in REGIONS_WITH_ALL:
+        pool = _region_pool(records, region_id)
+        if not pool:
+            continue
+        required = ["all"] + [cat for cat in CAT_NAMES
+                              if sum(r.get("cat") == cat for r in pool) >= MIN_VIDEOS_FOR_INSIGHT]
+        region = insights.get(region_id)
+        for cat in required:
+            value = region.get(cat) if isinstance(region, dict) else None
+            if not isinstance(value, str) or not value.strip():
+                missing.append(f"{region_id}/{cat}")
+    summary = insights.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        missing.append("summary")
+    if missing:
+        raise ValueError(f"{target_date}: incomplete insights: {', '.join(missing)}")
+
+
+def validate_publication(data_dir=None):
+    data_dir = DATA_DIR if data_dir is None else Path(data_dir)
+    failures = []
+    for target in _read_dates(data_dir):
+        try:
+            records = _read_records(data_dir / target / "combined.json")
+            insights = json.loads((data_dir / target / "insights.json").read_text(encoding="utf-8"))
+            validate_insights(records, insights, target)
+        except (OSError, ValueError) as exc:
+            failures.append(f"{target}: {exc}")
+    if failures:
+        raise ValueError("Publication validation failed:\n" + "\n".join(failures))
+
+
+def stage_publication(stage_dir, retain_history=False):
+    """Overlay local archives onto published history; validate before pruning or push."""
+    stage_dir = Path(stage_dir)
+    published = _read_dates(stage_dir)
+    local = _read_dates(DATA_DIR)
+    shutil.copytree(DATA_DIR, stage_dir, dirs_exist_ok=True)
+    dates = sorted(set(published + local), reverse=True)
+    (stage_dir / "dates.json").write_text(json.dumps(dates), encoding="utf-8")
+    validate_publication(stage_dir)
+    if not retain_history:
+        cleanup_old_data(stage_dir)
+
+
+def backfill_insights(target_dates=None):
+    """Repair archives without scraping, translation, notification or pruning."""
+    available = _read_dates(DATA_DIR)
+    targets = list(dict.fromkeys(target_dates if target_dates is not None else available))
+    unknown = set(targets) - set(available)
+    if unknown:
+        raise ValueError(f"Dates not in dates.json: {sorted(unknown)}")
+    failures = []
+    for target in targets:
+        try:
+            records = _read_records(DATA_DIR / target / "combined.json")
+            path = DATA_DIR / target / "insights.json"
+            try:
+                existing = json.loads(path.read_text(encoding="utf-8"))
+                validate_insights(records, existing, target)
+            except (OSError, ValueError):
+                generate_insights(records, target)
+            else:
+                print(f"[{target}] Complete insights exist; skipping")
+        except Exception as exc:
+            failures.append(f"{target}: {exc}")
+    if failures:
+        raise RuntimeError("Backfill failed:\n" + "\n".join(failures))
+
+
 def generate_insights(records: list[dict], target_date: str) -> dict:
     print("\n[洞察] 生成 地区×分类 洞察...")
     insights = {"date": target_date}
@@ -346,10 +446,7 @@ def generate_insights(records: list[dict], target_date: str) -> dict:
 
     for region_id, region_desc in REGIONS_WITH_ALL.items():
         region_data = {}
-        if region_id == "all":
-            pool = [r for r in records if r.get("r") not in ("CN",) and r.get("cat") != "global_trending"]
-        else:
-            pool = [r for r in records if r.get("r") == region_id]
+        pool = _region_pool(records, region_id)
 
         if not pool:
             print(f"  [{region_desc}] 无数据，跳过")
@@ -370,27 +467,20 @@ def generate_insights(records: list[dict], target_date: str) -> dict:
                 focus=CAT_PROMPTS.get(cat_id, ""),
                 data=_slim(sample),
             )
-            try:
-                region_data[cat_id] = _llm_call(prompt)
-                call_count += 1
-                print(f"  [{region_desc}] {cat_name}: 完成")
-            except Exception as e:
-                print(f"  [{region_desc}] {cat_name}: 失败 {e}")
+            region_data[cat_id] = _llm_call(prompt)
+            call_count += 1
+            print(f"  [{region_desc}] {cat_name}: 完成")
 
         # All Tags 整体洞察
         if region_id == "all":
             sample = _top_by_region(pool, 10)
         else:
             sample = _top_sorted(pool, 30)
-        try:
-            region_data["all"] = _llm_call(ALL_PROMPT_TPL.format(
-                region_desc=region_desc,
-                data=_slim(sample),
-            ))
-            call_count += 1
-            print(f"  [{region_desc}] 整体: 完成")
-        except Exception as e:
-            print(f"  [{region_desc}] 整体: 失败 {e}")
+        region_data["all"] = _llm_call(ALL_PROMPT_TPL.format(
+            region_desc=region_desc, data=_slim(sample),
+        ))
+        call_count += 1
+        print(f"  [{region_desc}] 整体: 完成")
 
         insights[region_id] = region_data
 
@@ -398,16 +488,22 @@ def generate_insights(records: list[dict], target_date: str) -> dict:
     print("  钉钉摘要...")
     all_insights = insights.get("all", {})
     cat_text = "\n".join(f"[{CAT_NAMES.get(k,k)}] {v}" for k, v in all_insights.items() if k != "all" and v)
-    try:
-        insights["summary"] = _llm_call(SUMMARY_PROMPT_TPL.format(insights=cat_text))
-        call_count += 1
-        print("  摘要: 完成")
-    except Exception as e:
-        print(f"  摘要: 失败 {e}")
-        insights["summary"] = ""
+    insights["summary"] = _llm_call(SUMMARY_PROMPT_TPL.format(insights=cat_text))
+    call_count += 1
+    validate_insights(records, insights, target_date)
 
     out_path = DATA_DIR / target_date / "insights.json"
-    out_path.write_text(json.dumps(insights, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Failed generation/writes never replace an existing report.
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=out_path.parent,
+                                         prefix=".insights-", suffix=".tmp", delete=False) as tmp:
+            temp_path = Path(tmp.name)
+            json.dump(insights, tmp, ensure_ascii=False, indent=2)
+        os.replace(temp_path, out_path)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
     print(f"  已保存 → {out_path} (共 {call_count} 次 LLM 调用)")
     return insights
 
@@ -546,8 +642,9 @@ def run_monday():
         except Exception as e:
             print(f"  翻译失败（不影响数据）: {e}")
 
-        records = json.loads(data_file.read_text(encoding="utf-8"))
+        records = _read_records(data_file)
         insights = generate_insights(records, monday)
+        backfill_insights()
 
         deploy_pages()
         sync_main()
@@ -562,27 +659,34 @@ def run_monday():
 
 
 def main():
-    if not API_TOKEN or API_TOKEN == "your_token_here":
-        print("错误: 请先在 .env 文件中设置 TIKHUB_API_TOKEN")
-        return
-
-    LOG_DIR.mkdir(exist_ok=True)
-
-    if len(sys.argv) < 2:
-        print(__doc__)
-        return
-
-    day = sys.argv[1].lower()
-    if day not in SCHEDULE:
-        print(f"不支持的参数: {day}")
-        print(f"可选: {list(SCHEDULE.keys())}")
-        return
-
-    if day == "monday":
-        run_monday()
+    parser = argparse.ArgumentParser(description="Weekly scrape, archive insight backfill and validation")
+    parser.add_argument("command", choices=[*SCHEDULE, "backfill", "validate"])
+    parser.add_argument("--dates", nargs="+", help="Backfill selected dates; default: all indexed dates")
+    parser.add_argument("--data-dir", type=Path, help="Archive root, e.g. gh-pages checkout's data directory")
+    parser.add_argument("--deploy", action="store_true", help="Deploy repairs preserving published history")
+    args = parser.parse_args()
+    if args.command not in ("backfill", "validate") and (args.dates or args.data_dir or args.deploy):
+        parser.error("Archive options require backfill or validate")
+    if args.command == "validate" and (args.dates or args.deploy):
+        parser.error("validate does not accept --dates or --deploy")
+    global DATA_DIR
+    if args.data_dir:
+        DATA_DIR = args.data_dir.resolve()
+    if args.command == "validate":
+        validate_publication()
+    elif args.command == "backfill":
+        backfill_insights(args.dates)
+        if args.deploy:
+            validate_publication()
+            deploy_pages(retain_history=True)
     else:
-        run_scrape(day)
-
+        if not API_TOKEN or API_TOKEN == "your_token_here":
+            parser.error("Set TIKHUB_API_TOKEN in .env before scraping")
+        LOG_DIR.mkdir(exist_ok=True)
+        if args.command == "monday":
+            run_monday()
+        else:
+            run_scrape(args.command)
     print("\n完成。")
 
 
