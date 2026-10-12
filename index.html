@@ -290,7 +290,7 @@ var TAG_INFO={
   }
 };
 
-var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[],INSIGHTS=null,curDateStr='';
+var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[],INSIGHTS=null,INSIGHT_STATUS='loading',loadVersion=0,curDateStr='';
 
 function fmt(n){if(!n)return'0';n=+n;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':n.toString()}
 function dur(s){if(!s)return'';s=+s;return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
@@ -337,15 +337,16 @@ function updateInsight(){
   var panel=document.getElementById('insight-panel');
   var textEl=document.getElementById('insight-text');
   var labelEl=document.getElementById('insight-label');
-  if(!INSIGHTS){panel.classList.remove('visible');return}
   var regionKey=curPrimary;
   var catKey=curCat==='all'?'all':curCat;
-  var regionData=INSIGHTS[regionKey];
-  if(!regionData){panel.classList.remove('visible');return}
-  var text=regionData[catKey];
-  if(!text){panel.classList.remove('visible');return}
-  labelEl.textContent='本周'+(REGION_LABEL[regionKey]||regionKey)+'×'+(CAT_LABEL[catKey]||catKey)+'标签下的AI洞察';
-  textEl.innerHTML=mdToHtml(text);
+  var regionData=INSIGHTS&&INSIGHTS[regionKey];
+  var text=regionData&&regionData[catKey];
+  labelEl.textContent=curDateStr+' '+(REGION_LABEL[regionKey]||regionKey)+'×'+(CAT_LABEL[catKey]||catKey)+' AI洞察';
+  if(INSIGHT_STATUS==='loading')textEl.textContent='正在加载AI分析…';
+  else if(INSIGHT_STATUS==='missing')textEl.textContent='本期周报尚未提供AI分析，视频数据仍可查看。';
+  else if(INSIGHT_STATUS==='error')textEl.textContent='AI分析加载失败，请刷新重试。视频数据仍可查看。';
+  else if(typeof text!=='string'||!text.trim())textEl.textContent='当前地区和分类暂无AI分析（可能样本不足或尚未生成），视频数据仍可查看。';
+  else textEl.innerHTML=mdToHtml(text);
   panel.classList.add('visible');
 }
 
@@ -381,18 +382,37 @@ function render(){
 }
 
 function loadDate(dateStr){
+  var version=++loadVersion;
   curDateStr=dateStr;
+  document.getElementById('loading').textContent='Loading…';
   document.getElementById('loading').style.display='block';
   document.getElementById('grid').innerHTML='';
-  INSIGHTS=null;updateInsight();
-  fetch('data/'+dateStr+'/insights.json?t='+Date.now()).then(function(r){return r.ok?r.json():null}).then(function(d){
-    INSIGHTS=d;updateInsight();
-  }).catch(function(){});
-  fetch('data/'+dateStr+'/combined.json?t='+Date.now()).then(function(r){return r.json()}).then(function(d){
+  DATA=[];INSIGHTS=null;INSIGHT_STATUS='loading';updateInsight();
+  var insightRequest=fetch('data/'+dateStr+'/insights.json?t='+Date.now()).then(function(r){
+    if(r.status===404)return null;
+    if(!r.ok)throw new Error('Insight HTTP '+r.status);
+    return r.json().then(function(d){
+      if(!d||typeof d!=='object'||Array.isArray(d)||d.date!==dateStr)throw new Error('Invalid insight report');
+      return d;
+    });
+  }).then(function(d){
+    if(version!==loadVersion)return;
+    INSIGHTS=d;INSIGHT_STATUS=d?'ready':'missing';updateInsight();
+  }).catch(function(){
+    if(version!==loadVersion)return;
+    INSIGHTS=null;INSIGHT_STATUS='error';updateInsight();
+  });
+  var dataRequest=fetch('data/'+dateStr+'/combined.json?t='+Date.now()).then(function(r){
+    if(!r.ok)throw new Error('Video HTTP '+r.status);
+    return r.json();
+  }).then(function(d){
+    if(version!==loadVersion)return;
     DATA=d;page=1;doFilter();render();
-  }).catch(function(e){
+  }).catch(function(){
+    if(version!==loadVersion)return;
     document.getElementById('loading').textContent='Failed to load data for '+dateStr;
   });
+  return Promise.all([insightRequest,dataRequest]);
 }
 
 // Init: load dates
