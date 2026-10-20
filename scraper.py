@@ -874,14 +874,43 @@ def archive_to_data(df: pd.DataFrame, target_date: str | None = None) -> Path:
 
     new_records = json.loads(df2.to_json(orient="records", force_ascii=False))
 
-    # 合并已有数据（保留 global 等之前抓取的数据）
+    # Merge existing archive records while retaining all discovery provenance on duplicate IDs.
     combined_path = date_dir / "combined.json"
     if combined_path.exists():
         existing = json.loads(combined_path.read_text(encoding="utf-8"))
-        new_ids = {r.get("id") for r in new_records}
-        kept = [r for r in existing if r.get("id") not in new_ids]
-        new_records = new_records + kept
-        print(f"\n  合并已有数据: 保留 {len(kept)} 条旧条目")
+        merged_by_id = {}
+        order = []
+        for record in existing + new_records:
+            vid = record.get("id")
+            if not vid:
+                # Keep malformed/legacy records rather than accidentally merging all empty IDs.
+                order.append((None, record))
+                continue
+            if vid not in merged_by_id:
+                merged_by_id[vid] = record.copy()
+                order.append((vid, None))
+                continue
+            target_record = merged_by_id[vid]
+            # New record fields refresh current stats/content, but provenance is unioned across runs.
+            for field in ("srcs", "qrs", "qts", "cats"):
+                old_values = target_record.get(field, [])
+                new_values = record.get(field, [])
+                if not isinstance(old_values, list):
+                    old_values = [old_values] if old_values else []
+                if not isinstance(new_values, list):
+                    new_values = [new_values] if new_values else []
+                combined = list(old_values)
+                for value in new_values:
+                    if value not in combined:
+                        combined.append(value)
+                if combined:
+                    target_record[field] = combined
+            target_record.update({k: v for k, v in record.items() if k not in {"srcs", "qrs", "qts", "cats"}})
+            # Preserve the legacy primary category while also keeping every category in cats.
+            if target_record.get("cat") and target_record["cat"] not in target_record.get("cats", []):
+                target_record.setdefault("cats", []).append(target_record["cat"])
+        new_records = [merged_by_id[vid] if vid is not None else record for vid, record in order]
+        print(f"\n  合并已有数据: 共 {len(new_records)} 条，重复视频保留全部来源")
 
     combined_path.write_text(json.dumps(new_records, ensure_ascii=False), encoding="utf-8")
     print(f"  已归档 {len(new_records)} 条 → {combined_path}")
