@@ -96,3 +96,11 @@
 | `scraper.py` 的 `archive_to_data()` 函数 | 需要在合并 global 数据时做字段映射 |
 | `index.html` 的 `doFilter()` | 确认 global_trending 过滤逻辑 |
 | `data/2026-05-19/combined.json` | 验证修复后 global 数据正确 |
+
+
+## 2026-10 scraping logic review notes
+
+- The TikTok hashtag-post request currently uses challengeID/count/cursor and does not send a country parameter. ID/TH/PH/global tag groups are query provenance, not verified audience geography.
+- New scraping code preserves multiple discovery sources and category associations when the same video is found through multiple tags.
+- The local request budget counts uncached attempts before network I/O to avoid undercounting timeouts and failed attempts. Check the provider's billing dashboard for authoritative charges.
+- Gaming seed tags now prioritize Roblox, indie horror, co-op horror, party games and social deduction; MLBB, Free Fire and ROV are removed from active seed lists.
