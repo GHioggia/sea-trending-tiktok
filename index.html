@@ -146,7 +146,7 @@ footer{text-align:center;margin-top:32px;padding:14px;border-top:1px solid var(-
     <div class="bar2-right">
       <select class="ctrl" id="time-filter">
         <option value="all">ALL TIME</option>
-        <option value="7d">近7天发布</option>
+        <option value="7d" selected>近7天发布</option>
       </select>
       <select class="ctrl" id="sort-sel">
         <option value="p">Plays ↓</option>
@@ -290,7 +290,7 @@ var TAG_INFO={
   }
 };
 
-var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='all',filtered=[],INSIGHTS=null,curDateStr='';
+var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='7d',filtered=[],INSIGHTS=null,curDateStr='';
 
 function fmt(n){if(!n)return'0';n=+n;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':n.toString()}
 function dur(s){if(!s)return'';s=+s;return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}

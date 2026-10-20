@@ -8,6 +8,7 @@
 """
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -38,12 +39,15 @@ def translate_batch(items: list[dict], client: anthropic.Anthropic) -> list[str]
     )
 
     msg = client.messages.create(
-        model="claude-haiku",
+        model=os.environ.get("ANTHROPIC_MODEL", "glm-5.2"),
         max_tokens=1024,
+        thinking={"type": "disabled"},
         messages=[{"role": "user", "content": prompt}],
     )
 
-    result_text = msg.content[0].text.strip()
+    result_text = "".join(
+        b.text for b in msg.content if getattr(b, "type", None) == "text"
+    ).strip()
     results = [""] * len(items)
     for line in result_text.splitlines():
         line = line.strip()
@@ -73,17 +77,31 @@ def translate_file(json_path: Path):
 
     client = anthropic.Anthropic()
     total_done = 0
+    consecutive_failures = 0
 
     for batch_num, start in enumerate(range(0, len(pending_idx), BATCH_SIZE), 1):
         batch_ids = pending_idx[start: start + BATCH_SIZE]
         batch_items = [data[i] for i in batch_ids]
 
-        try:
-            translations = translate_batch(batch_items, client)
-        except Exception as e:
-            print(f"  [批次 {batch_num}] 失败: {e}")
-            time.sleep(2)
+        translations = None
+        for attempt in range(5):
+            try:
+                translations = translate_batch(batch_items, client)
+                break
+            except Exception as e:
+                s = str(e)
+                quota = "429" in s or "Throttling" in s or "quota" in s.lower()
+                wait = 60 if quota else 3 * (attempt + 1)
+                print(f"  [批次 {batch_num}] 失败(第{attempt + 1}次): {s[:70]}，{wait}s 后重试")
+                time.sleep(wait)
+        if translations is None:
+            print(f"  [批次 {batch_num}] 重试仍失败，跳过本批")
+            consecutive_failures += 1
+            if consecutive_failures >= 5:
+                print("  连续 5 批失败（配额长时间未恢复），中止翻译，稍后可重跑补齐")
+                break
             continue
+        consecutive_failures = 0
 
         for idx, zh in zip(batch_ids, translations):
             data[idx]["zh"] = zh
@@ -95,7 +113,7 @@ def translate_file(json_path: Path):
         if batch_num % SAVE_INTERVAL == 0:
             json_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
-        time.sleep(0.3)
+        time.sleep(0.6)
 
     json_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     print(f"  完成，共翻译 {total_done} 条")

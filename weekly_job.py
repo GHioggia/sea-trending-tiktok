@@ -27,6 +27,8 @@ from scraper import (
     get_today_usage,
     DAILY_BUDGET,
     DATA_DIR,
+    FETCH_ERRORS,
+    PaymentRequiredError,
 )
 
 SCHEDULE = {
@@ -78,14 +80,23 @@ def run_scrape(day: str):
     print(f"  目标归档日期: {monday}")
     print(f"  今日预算剩余: {get_today_remaining()}/{DAILY_BUDGET}")
 
-    if platform == "douyin":
-        df = scrape_douyin_categories(videos_per_tag=20, categories=cats)
-    else:
-        df = scrape_categories(videos_per_tag=30, categories=cats, regions=regions)
+    try:
+        if platform == "douyin":
+            df = scrape_douyin_categories(videos_per_tag=20, categories=cats)
+        else:
+            df = scrape_categories(videos_per_tag=30, categories=cats, regions=regions)
+    except PaymentRequiredError as e:
+        print(f"  抓取中止: {e}")
+        notify_alert(day, "TikHub 余额不足，抓取已中止", [str(e), "请到 https://user.tikhub.io/ 充值后重跑本日任务"])
+        return None
 
     if df.empty:
         print("  未获取到数据")
+        notify_alert(day, "未获取到任何数据", FETCH_ERRORS)
         return None
+
+    if FETCH_ERRORS:
+        notify_alert(day, f"部分标签抓取失败（{len(FETCH_ERRORS)} 个），已获取 {len(df)} 条", FETCH_ERRORS)
 
     combined_path = archive_to_data(df, target_date=str(monday))
     print(f"  已归档 → {combined_path}")
@@ -505,6 +516,10 @@ def notify_dingtalk(monday_date: str, records: list[dict], insights: dict):
     }
 
     print(f"\n[通知] 发送钉钉消息到 {len(bots)} 个机器人...")
+    _send_to_bots(bots, payload)
+
+
+def _send_to_bots(bots: list[dict], payload: dict):
     for bot in bots:
         name = bot.get("name", "未命名")
         webhook = bot.get("webhook", "")
@@ -520,6 +535,26 @@ def notify_dingtalk(monday_date: str, records: list[dict], insights: dict):
                 print(f"  [{name}] 失败: {data}")
         except Exception as e:
             print(f"  [{name}] 异常: {e}")
+
+
+def notify_alert(day: str, title: str, details: list[str]):
+    """抓取异常告警，只发给 dingtalk_bots.json 中 alert=true 的机器人"""
+    bots = [b for b in _load_dingtalk_bots() if b.get("alert")]
+    if not bots:
+        print("\n[告警] 跳过：dingtalk_bots.json 中无 alert=true 的机器人")
+        return
+    shown = details[:10]
+    more = f"\n- ……另有 {len(details) - 10} 条" if len(details) > 10 else ""
+    text = (
+        f"## ⚠️ TikTok 抓取异常 · {day}\n\n"
+        f"**{title}**\n\n"
+        f"- 运行日期：{date.today()}，归档目标：{get_monday_date()}\n"
+        f"- 今日 API 已用：{get_today_usage()}/{DAILY_BUDGET}\n\n"
+        + ("\n".join(f"- {d}" for d in shown) + more if shown else "")
+    )
+    payload = {"msgtype": "markdown", "markdown": {"title": f"⚠️ TikTok 抓取异常 {day}", "text": text}}
+    print(f"\n[告警] 发送异常告警到 {len(bots)} 个机器人...")
+    _send_to_bots(bots, payload)
 
 
 def _notification_sent(monday: str) -> bool:
@@ -578,10 +613,14 @@ def main():
         print(f"可选: {list(SCHEDULE.keys())}")
         return
 
-    if day == "monday":
-        run_monday()
-    else:
-        run_scrape(day)
+    try:
+        if day == "monday":
+            run_monday()
+        else:
+            run_scrape(day)
+    except Exception as e:
+        notify_alert(day, "任务异常退出", [f"{type(e).__name__}: {e}"])
+        raise
 
     print("\n完成。")
 

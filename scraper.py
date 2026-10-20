@@ -37,6 +37,19 @@ BASE_URL = "https://api.tikhub.io"
 API_TOKEN = os.getenv("TIKHUB_API_TOKEN", "")
 DAILY_BUDGET = 500
 
+# 本次运行中单个标签请求失败的记录，供 weekly_job 判断是否告警
+FETCH_ERRORS: list[str] = []
+
+
+class PaymentRequiredError(Exception):
+    """TikHub 返回 402，账户余额不足，应中止整批抓取"""
+
+
+def _check_payment(resp: httpx.Response):
+    if resp.status_code == 402:
+        print("  [!] API 余额不足 (402 Payment Required)，请充值后重试")
+        raise PaymentRequiredError("TikHub 402 Payment Required：账户余额不足")
+
 REGIONS = {
     "ID": "印尼 Indonesia",
     "TH": "泰国 Thailand",
@@ -222,9 +235,7 @@ def api_get(endpoint: str, params: dict = None, use_cache: bool = True) -> dict:
     url = f"{BASE_URL}{endpoint}"
     with httpx.Client(timeout=30) as client:
         resp = client.get(url, headers=get_headers(), params=params)
-        if resp.status_code == 402:
-            print("  [!] API 余额不足 (402 Payment Required)，请充值后重试")
-            raise httpx.HTTPStatusError("402 Payment Required", request=resp.request, response=resp)
+        _check_payment(resp)
         resp.raise_for_status()
         data = resp.json()
 
@@ -374,6 +385,8 @@ def resolve_tag_ids(tags: list[str]) -> dict[str, str]:
                 tag_map[tag] = str(cid)
                 tag_cache[tag] = str(cid)
                 print(f"    #{tag} -> ID: {cid} [fetched]")
+        except PaymentRequiredError:
+            raise
         except Exception as e:
             print(f"    #{tag} -> 错误: {e}")
         time.sleep(0.5)
@@ -472,8 +485,11 @@ def scrape_categories(videos_per_tag: int = 30, categories: list[str] | None = N
                 except RuntimeError:
                     print("    预算已用完")
                     break
+                except PaymentRequiredError:
+                    raise
                 except Exception as e:
                     print(f"    #{tag_name} [{region}]: 错误 {e}")
+                    FETCH_ERRORS.append(f"#{tag_name} [{region}]: {e}")
                 time.sleep(0.8)
 
     df = pd.DataFrame(all_videos)
@@ -546,6 +562,7 @@ def fetch_douyin_challenge_search(keyword: str) -> dict:
 
     with httpx.Client(timeout=30) as client:
         resp = client.post(url, headers=get_headers(), json=params)
+        _check_payment(resp)
         resp.raise_for_status()
         data = resp.json()
 
@@ -586,6 +603,7 @@ def fetch_douyin_video_search(keyword: str, count: int = 20) -> dict:
 
     with httpx.Client(timeout=30) as client:
         resp = client.post(url, headers=get_headers(), json=params)
+        _check_payment(resp)
         resp.raise_for_status()
         data = resp.json()
 
@@ -629,6 +647,8 @@ def resolve_douyin_tag_ids(tags: list[str]) -> dict[str, str]:
                 print(f"    #{tag} -> cid: {cid} [fetched]")
             else:
                 print(f"    #{tag} -> 未找到")
+        except PaymentRequiredError:
+            raise
         except Exception as e:
             print(f"    #{tag} -> 错误: {e}")
         time.sleep(0.5)
@@ -733,6 +753,8 @@ def scrape_douyin_categories(videos_per_tag: int = 20, categories: list[str] | N
             except RuntimeError:
                 print("    预算已用完")
                 break
+            except PaymentRequiredError:
+                raise
             except Exception:
                 if not check_budget():
                     print("    预算已用完")
@@ -751,8 +773,11 @@ def scrape_douyin_categories(videos_per_tag: int = 20, categories: list[str] | N
                 except RuntimeError:
                     print("    预算已用完")
                     break
+                except PaymentRequiredError:
+                    raise
                 except Exception as e2:
                     print(f"    #{tag_name}: 搜索也失败 {e2}")
+                    FETCH_ERRORS.append(f"#{tag_name}: 标签与搜索均失败 {e2}")
             time.sleep(0.8)
 
     df = pd.DataFrame(all_videos)
