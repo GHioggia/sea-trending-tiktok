@@ -891,6 +891,15 @@ def archive_to_data(df: pd.DataFrame, target_date: str | None = None) -> Path:
                 order.append((vid, None))
                 continue
             target_record = merged_by_id[vid]
+            # Retain the previous primary category before refreshing fields from the new record.
+            previous_cat = target_record.get("cat")
+            if previous_cat:
+                old_cats = target_record.get("cats", [])
+                if not isinstance(old_cats, list):
+                    old_cats = [old_cats] if old_cats else []
+                if previous_cat not in old_cats:
+                    old_cats.append(previous_cat)
+                target_record["cats"] = old_cats
             # New record fields refresh current stats/content, but provenance is unioned across runs.
             for field in ("srcs", "qrs", "qts", "cats"):
                 old_values = target_record.get(field, [])
