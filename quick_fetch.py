@@ -31,6 +31,7 @@ from scraper import (
     save_results,
     print_summary,
     check_budget,
+    dedupe_videos,
     main as full_main,
 )
 import pandas as pd
@@ -48,7 +49,7 @@ def cmd_trends(region: str, order_by: str, limit: int = 50):
     parsed = [parse_trend_video(v, region, order_by) for v in videos]
     df = pd.DataFrame(parsed)
     if not df.empty:
-        df = df.drop_duplicates(subset=["video_id"], keep="first")
+        df = dedupe_videos(df)
     print(f"获取到 {len(df)} 条视频")
     print_summary(df)
     save_results(df, prefix=f"quick_trends_{region}_{order_by}")
@@ -83,7 +84,7 @@ def cmd_category(category: str, region: str, count: int = 30):
 
     df = pd.DataFrame(all_videos)
     if not df.empty:
-        df = df.drop_duplicates(subset=["video_id"], keep="first")
+        df = dedupe_videos(df)
     print(f"\n获取到 {len(df)} 条独立视频")
     print_summary(df)
     save_results(df, prefix=f"quick_{category}_{region}")

@@ -366,6 +366,15 @@ def parse_tag_video(item: dict, region: str, tag_name: str, category: str) -> di
 
 # ─── Video deduplication ─────────────────────────────────────────────────────
 
+def _first_present(item, *keys) -> str:
+    """Return the first non-empty, non-NaN value; concat of frames with differing columns fills NaN."""
+    for key in keys:
+        value = item.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
 def dedupe_videos(df: pd.DataFrame) -> pd.DataFrame:
     """Deduplicate by platform video ID while preserving every query/category that discovered it."""
     if df.empty or "video_id" not in df.columns:
@@ -381,16 +390,16 @@ def dedupe_videos(df: pd.DataFrame) -> pd.DataFrame:
             if not existing:
                 existing = [{
                     "platform": "douyin" if str(item.get("video_id", "")).startswith("dy_") else "tiktok",
-                    "query_region": item.get("query_region", item.get("region", "")),
-                    "tag": item.get("query_tag", item.get("source", "")),
-                    "category": item.get("category", ""),
+                    "query_region": _first_present(item, "query_region", "region"),
+                    "tag": _first_present(item, "query_tag", "source"),
+                    "category": _first_present(item, "category"),
                 }]
             for discovery in existing:
                 if discovery not in discoveries:
                     discoveries.append(discovery)
-            region = item.get("query_region", item.get("region", ""))
-            tag = item.get("query_tag", item.get("source", ""))
-            category = item.get("category", "")
+            region = _first_present(item, "query_region", "region")
+            tag = _first_present(item, "query_tag", "source")
+            category = _first_present(item, "category")
             if region and region not in regions_seen:
                 regions_seen.append(region)
             if tag and tag not in tags_seen:
@@ -402,6 +411,8 @@ def dedupe_videos(df: pd.DataFrame) -> pd.DataFrame:
                 for cat in extra_categories:
                     if cat and cat not in categories_seen:
                         categories_seen.append(cat)
+        row["query_region"] = _first_present(row, "query_region") or (regions_seen[0] if regions_seen else "")
+        row["query_tag"] = _first_present(row, "query_tag") or (tags_seen[0] if tags_seen else "")
         row["discovered_by"] = discoveries
         row["query_regions"] = regions_seen
         row["query_tags"] = tags_seen
@@ -900,6 +911,15 @@ def archive_to_data(df: pd.DataFrame, target_date: str | None = None) -> Path:
                 if previous_cat not in old_cats:
                     old_cats.append(previous_cat)
                 target_record["cats"] = old_cats
+            # Same for the legacy region label: the UI region tabs also match against qrs.
+            previous_r = target_record.get("r")
+            if previous_r:
+                old_qrs = target_record.get("qrs", [])
+                if not isinstance(old_qrs, list):
+                    old_qrs = [old_qrs] if old_qrs else []
+                if previous_r not in old_qrs:
+                    old_qrs.append(previous_r)
+                target_record["qrs"] = old_qrs
             # New record fields refresh current stats/content, but provenance is unioned across runs.
             for field in ("srcs", "qrs", "qts", "cats"):
                 old_values = target_record.get(field, [])

@@ -312,8 +312,9 @@ function fmt(n){if(!n)return'0';n=+n;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3
 function dur(s){if(!s)return'';s=+s;return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
 function isW7(t){if(!t)return false;var age=Date.now()-new Date(t.replace(' ','T')).getTime();return age>=0&&age<7*864e5}
-function videoText(d){return [d.d,d.zh,d.h,d.url,d.qt,Array.isArray(d.qts)?d.qts.join(' '):'',Array.isArray(d.cats)?d.cats.join(' '):''].join(' ').toLowerCase()}
-function isExcludedGame(d){return /(^|[^a-z])(mlbb|mobile legends|mobilelegends|free fire|freefire|garena free fire|rov thailand|rovthailand)([^a-z]|$)/i.test(videoText(d))}
+function videoRegions(d){var rs=Array.isArray(d.qrs)?d.qrs.slice():[];if(d.r&&rs.indexOf(d.r)<0)rs.push(d.r);return rs}
+function videoText(d){return [d.d,d.zh,d.h,d.qt,Array.isArray(d.qts)?d.qts.join(' '):'',Array.isArray(d.cats)?d.cats.join(' '):''].join(' ').toLowerCase()}
+function isExcludedGame(d){return /(^|[^a-z])(mlbb|mobile legends|mobilelegends|free fire|freefire|garena free fire|rov thailand|rovthailand|rov)([^a-z]|$)/i.test(videoText(d))}
 function matchesLens(d){
   var text=videoText(d), cat=d.cat||'', cats=Array.isArray(d.cats)?d.cats:[];
   if(curLens==='all')return true;
@@ -324,10 +325,10 @@ function matchesLens(d){
   }
   if(curLens==='game'){
     if(isExcludedGame(d))return false;
-    return cat==='gaming'||cats.indexOf('gaming')>=0||/roblox|indie.?game|new.?game|co.?op.?horror|social.?deduction|party.?game|gameplay|multiplayer|steam|เกมใหม่|เกมผี|เกมอินดี้/i.test(text);
+    return cat==='gaming'||cats.indexOf('gaming')>=0||/roblox|indie.?game|new.?game|co.?op.?horror|social.?deduction|party.?game|gameplay|multiplayer|\bsteam(?!ed|ing|er)|เกมใหม่|เกมผี|เกมอินดี้/i.test(text);
   }
-  if(curLens==='social')return /prank|friends?|group challenge|party.?game|social.?deduction|co.?op|cooperative|multiplayer|hide.?and.?seek|among.?us|board.?game|背刺|整蛊|朋友|多人|合作|猜疑|狼人杀|同学|เพื่อน|เล่นกับเพื่อน|main bareng|mabar|teman|kaibigan|tropa/i.test(text);
-  if(curLens==='horror')return cat==='horror'||cats.indexOf('horror')>=0||/horror|scary|ghost|haunt|paranormal|jumpscare|analog.?horror|kuntilanak|pocong|pontianak|aswang|engkanto|cerita seram|cerita horor|หนังผี|สยองขวัญ|ผีไทย|เรื่องผี|multo|鬼故事|恐怖|灵异|鬼怪|都市传说/i.test(text);
+  if(curLens==='social')return /prank|(?<!boy|girl)friends?|group challenge|party.?game|social.?deduction|co.?op|cooperative|multiplayer|hide.?and.?seek|among.?us|board.?game|背刺|整蛊|朋友|多人|合作|猜疑|狼人杀|同学|เพื่อน|เล่นกับเพื่อน|main bareng|mabar|teman|kaibigan|tropa/i.test(text);
+  if(curLens==='horror')return cat==='horror'||cats.indexOf('horror')>=0||/horror|scary|ghost(?!ed|ing)|haunt|paranormal|jumpscare|analog.?horror|kuntilanak|pocong|pontianak|aswang|engkanto|cerita seram|cerita horor|หนังผี|สยองขวัญ|ผีไทย|เรื่องผี|multo|鬼故事|恐怖|灵异|鬼怪|都市传说/i.test(text);
   return true;
 }
 
@@ -344,7 +345,8 @@ function updateHint(){
       var tl=tagName.toLowerCase();
       var zh=HASH_ZH[tl]||'';
       var count=DATA.filter(function(item){
-        if(item.cat!==curCat||item.r!==r)return false;
+        if(item.cat!==curCat&&!(Array.isArray(item.cats)&&item.cats.indexOf(curCat)>=0))return false;
+        if(videoRegions(item).indexOf(r)<0)return false;
         return (item.h||'').toLowerCase().split(/[\s,]+/).indexOf(tl)>=0;
       }).length;
       return '<span class="th"><span class="tn">#'+tagName+'</span>'
@@ -385,9 +387,11 @@ function updateInsight(){
 
 function doFilter(){
   filtered=DATA.filter(function(d){
-    if(curPrimary==='global'){if(d.r!=='global')return false;}
-    else if(curPrimary==='CN'){if(d.r!=='CN')return false;}
-    else{if(d.r==='global'||d.r==='CN')return false;if(curPrimary!=='all'&&d.r!==curPrimary)return false;}
+    var rs=videoRegions(d);
+    if(curPrimary==='global'){if(rs.indexOf('global')<0)return false;}
+    else if(curPrimary==='CN'){if(rs.indexOf('CN')<0)return false;}
+    else if(curPrimary==='all'){if(!rs.some(function(r){return r!=='global'&&r!=='CN'}))return false;}
+    else{if(rs.indexOf(curPrimary)<0)return false;}
     if(curCat!=='all'&&d.cat!==curCat&&!(Array.isArray(d.cats)&&d.cats.indexOf(curCat)>=0))return false;
     if(curTime==='7d'&&!isW7(d.t))return false;
     if(!matchesLens(d))return false;
@@ -411,7 +415,7 @@ function card(it,i){
   if(Array.isArray(it.srcs)){it.srcs.forEach(function(src){if(src&&typeof src==='object'&&src.tag&&provenance.indexOf(src.tag)<0)provenance.push(src.tag)})}
   if(!provenance.length&&it.qt)provenance.push(it.qt);
   var provenanceHtml=provenance.length?'<div class="card-provenance">发现标签：'+provenance.slice(0,5).map(function(x){return '<span class="card-badge">#'+esc(x)+'</span>'}).join('')+(provenance.length>5?' <span>+'+(provenance.length-5)+'</span>':'')+'</div>':'';
-  return '<a class="card" href="'+esc(link)+'" target="_blank" rel="noopener" style="animation-delay:'+(i%PAGE*.02)+'s"><div class="card-img">'+img+noI+'<div class="ov"><div class="tri"></div></div><span class="pill pill-dur">'+dur(it.dur)+'</span><span class="pill pill-r '+rCls+'">'+esc(it.r)+'</span></div><div class="card-bd"><div class="card-desc">'+esc(it.d)+'</div>'+(getZhLabel(it)?'<div class="card-zh">'+esc(getZhLabel(it))+'</div>':'')+'<div class="card-author">'+esc(it.au||it.an)+'</div><div class="card-nums"><div class="card-num"><b>'+fmt(it.p)+'</b><small>plays</small></div><div class="card-num"><b>'+fmt(it.l)+'</b><small>likes</small></div><div class="card-num"><b>'+fmt(it.cm)+'</b><small>cmts</small></div><div class="card-num"><b>'+fmt(it.sh)+'</b><small>shares</small></div></div><div class="card-foot"><span class="card-tags">'+esc(it.h)+'</span><span class="card-date">'+(it.t?it.t.split(' ')[0]:'')+'</span></div>'+provenanceHtml+'</div></a>';
+  return '<a class="card" href="'+esc(link)+'" target="_blank" rel="noopener" style="animation-delay:'+(i%PAGE*.02)+'s"><div class="card-img">'+img+noI+'<div class="ov"><div class="tri"></div></div><span class="pill pill-dur">'+dur(it.dur)+'</span><span class="pill pill-r '+rCls+'">'+esc(it.r)+'</span></div><div class="card-bd"><div class="card-desc">'+esc(it.d)+'</div>'+(getZhLabel(it)?'<div class="card-zh">'+esc(getZhLabel(it))+'</div>':'')+'<div class="card-author">'+esc(it.au||it.an)+'</div><div class="card-nums"><div class="card-num"><b>'+(it.p==null?'—':fmt(it.p))+'</b><small>plays</small></div><div class="card-num"><b>'+fmt(it.l)+'</b><small>likes</small></div><div class="card-num"><b>'+fmt(it.cm)+'</b><small>cmts</small></div><div class="card-num"><b>'+fmt(it.sh)+'</b><small>shares</small></div></div><div class="card-foot"><span class="card-tags">'+esc(it.h)+'</span><span class="card-date">'+(it.t?it.t.split(' ')[0]:'')+'</span></div>'+provenanceHtml+'</div></a>';
 }
 
 function render(){
