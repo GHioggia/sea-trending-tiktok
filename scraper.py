@@ -67,10 +67,11 @@ CATEGORY_TAGS = {
     "gaming": {
         "name": "游戏",
         "tags": {
-            "ID": ["mobilelegends", "freefire", "genshinimpact", "gaming", "gameandroid", "mlbb", "mobilegaming", "onlinegame"],
-            "TH": ["rovthailand", "เกม", "gamingthailand", "rov", "gaming", "เกมมือถือ", "gameth"],
-            "PH": ["mlbbph", "valorantph", "gamingph", "mlbb", "gaming", "genshinimpact", "freefire", "gamingphilippines"],
-            "global": ["gaming", "horrorgame", "indiegame", "mobilegame", "gamer"],
+            # 以新玩法/小众游戏发现为主；不主动抓取 MLBB、Free Fire、ROV 等头部禁忌游戏。
+            "ID": ["roblox", "robloxhorror", "indiegame", "horrorgame", "coophorror", "gaming", "gameandroid", "onlinegame"],
+            "TH": ["roblox", "เกมผี", "เกมสยองขวัญ", "เกมอินดี้", "เกมใหม่", "gamingthailand", "gaming"],
+            "PH": ["roblox", "robloxhorror", "indiegame", "horrorgame", "coophorror", "gamingph", "gamingphilippines"],
+            "global": ["robloxhorror", "horrorgame", "indiegame", "coophorror", "partygame", "socialdeduction", "newgames", "gaming"],
         },
     },
     "comedy": {
@@ -233,13 +234,13 @@ def api_get(endpoint: str, params: dict = None, use_cache: bool = True) -> dict:
         raise RuntimeError("今日 API 预算已用完")
 
     url = f"{BASE_URL}{endpoint}"
+    # Count uncached attempts before sending: local budget should not undercount timeouts/errors.
+    _increment_budget()
     with httpx.Client(timeout=30) as client:
         resp = client.get(url, headers=get_headers(), params=params)
         _check_payment(resp)
         resp.raise_for_status()
         data = resp.json()
-
-    _increment_budget()
 
     if use_cache:
         _set_cached_response(endpoint, params, data)
@@ -351,11 +352,62 @@ def parse_tag_video(item: dict, region: str, tag_name: str, category: str) -> di
         "play_url": "",
         "music_title": music.get("title", ""),
         "hashtags": ", ".join(c.get("title", "") for c in challenges),
+        # region remains for backwards-compatible UI; it is the query-list label, not verified audience geography.
         "region": region,
+        "query_region": region,
+        "query_tag": tag_name,
+        "discovered_by": [{"platform": "tiktok", "query_region": region, "tag": tag_name, "category": category}],
+        "all_categories": [category],
         "source": f"tag:{tag_name}",
         "category": category,
         "tiktok_url": tiktok_url,
     }
+
+
+# ─── Video deduplication ─────────────────────────────────────────────────────
+
+def dedupe_videos(df: pd.DataFrame) -> pd.DataFrame:
+    """Deduplicate by platform video ID while preserving every query/category that discovered it."""
+    if df.empty or "video_id" not in df.columns:
+        return df
+    rows = []
+    for _, group in df.groupby("video_id", sort=False, dropna=False):
+        row = group.iloc[0].to_dict()
+        discoveries, regions_seen, tags_seen, categories_seen = [], [], [], []
+        for _, item in group.iterrows():
+            existing = item.get("discovered_by", [])
+            if not isinstance(existing, list):
+                existing = []
+            if not existing:
+                existing = [{
+                    "platform": "douyin" if str(item.get("video_id", "")).startswith("dy_") else "tiktok",
+                    "query_region": item.get("query_region", item.get("region", "")),
+                    "tag": item.get("query_tag", item.get("source", "")),
+                    "category": item.get("category", ""),
+                }]
+            for discovery in existing:
+                if discovery not in discoveries:
+                    discoveries.append(discovery)
+            region = item.get("query_region", item.get("region", ""))
+            tag = item.get("query_tag", item.get("source", ""))
+            category = item.get("category", "")
+            if region and region not in regions_seen:
+                regions_seen.append(region)
+            if tag and tag not in tags_seen:
+                tags_seen.append(tag)
+            if category and category not in categories_seen:
+                categories_seen.append(category)
+            extra_categories = item.get("all_categories", [])
+            if isinstance(extra_categories, list):
+                for cat in extra_categories:
+                    if cat and cat not in categories_seen:
+                        categories_seen.append(cat)
+        row["discovered_by"] = discoveries
+        row["query_regions"] = regions_seen
+        row["query_tags"] = tags_seen
+        row["all_categories"] = categories_seen
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 # ─── Tag ID Resolver ─────────────────────────────────────────────────────────
@@ -433,7 +485,7 @@ def scrape_trends(period: int = 7, limit: int = 50) -> pd.DataFrame:
 
     df = pd.DataFrame(all_videos)
     if not df.empty:
-        df = df.drop_duplicates(subset=["video_id"], keep="first")
+        df = dedupe_videos(df)
         print(f"  合计: {len(df)} 条独立视频 (去重后)")
     return df
 
@@ -494,7 +546,7 @@ def scrape_categories(videos_per_tag: int = 30, categories: list[str] | None = N
 
     df = pd.DataFrame(all_videos)
     if not df.empty:
-        df = df.drop_duplicates(subset=["video_id"], keep="first")
+        df = dedupe_videos(df)
         print(f"\n  合计: {len(df)} 条独立视频 (去重后)")
     return df
 
@@ -560,13 +612,13 @@ def fetch_douyin_challenge_search(keyword: str) -> dict:
     if not check_budget():
         raise RuntimeError("今日 API 预算已用完")
 
+    _increment_budget()
     with httpx.Client(timeout=30) as client:
         resp = client.post(url, headers=get_headers(), json=params)
         _check_payment(resp)
         resp.raise_for_status()
         data = resp.json()
 
-    _increment_budget()
     _set_cached_response(cache_key, params, data)
     return data
 
@@ -601,13 +653,13 @@ def fetch_douyin_video_search(keyword: str, count: int = 20) -> dict:
     if not check_budget():
         raise RuntimeError("今日 API 预算已用完")
 
+    _increment_budget()
     with httpx.Client(timeout=30) as client:
         resp = client.post(url, headers=get_headers(), json=params)
         _check_payment(resp)
         resp.raise_for_status()
         data = resp.json()
 
-    _increment_budget()
     _set_cached_response(cache_key, params, data)
     return data
 
@@ -689,8 +741,9 @@ def parse_douyin_video(item: dict, tag_name: str, category: str) -> dict:
         "create_time": create_time_str,
         "author_nickname": author.get("nickname", ""),
         "author_unique_id": author.get("unique_id", "") or author.get("short_id", ""),
-        "play_count": stats.get("digg_count", 0),
-        "like_count": stats.get("digg_count", 0),
+        # digg_count is likes, not views. Keep views missing if API omits play_count.
+        "play_count": stats.get("play_count", stats.get("playCount")),
+        "like_count": stats.get("digg_count", stats.get("diggCount", 0)),
         "comment_count": stats.get("comment_count", 0),
         "share_count": stats.get("share_count", 0),
         "duration": duration_sec,
@@ -699,6 +752,10 @@ def parse_douyin_video(item: dict, tag_name: str, category: str) -> dict:
         "music_title": (item.get("music") or {}).get("title", ""),
         "hashtags": ", ".join(hashtags) if hashtags else tag_name,
         "region": "CN",
+        "query_region": "CN",
+        "query_tag": tag_name,
+        "discovered_by": [{"platform": "douyin", "query_region": "CN", "tag": tag_name, "category": category}],
+        "all_categories": [category],
         "source": f"douyin_tag:{tag_name}",
         "category": category,
         "tiktok_url": f"https://www.douyin.com/video/{aweme_id}",
@@ -782,7 +839,7 @@ def scrape_douyin_categories(videos_per_tag: int = 20, categories: list[str] | N
 
     df = pd.DataFrame(all_videos)
     if not df.empty:
-        df = df.drop_duplicates(subset=["video_id"], keep="first")
+        df = dedupe_videos(df)
         print(f"\n  合计: {len(df)} 条独立视频 (去重后)")
     return df
 
@@ -799,6 +856,8 @@ COLUMN_MAP = {
     "play_count": "p", "like_count": "l", "comment_count": "cm",
     "share_count": "sh", "duration": "dur", "cover_url": "cov",
     "tiktok_url": "url", "hashtags": "h", "region": "r", "category": "cat",
+    "query_region": "qr", "query_tag": "qt", "discovered_by": "srcs",
+    "all_categories": "cats", "query_regions": "qrs", "query_tags": "qts",
 }
 DROP_COLS = {"play_url", "music_title", "source"}
 
@@ -815,14 +874,52 @@ def archive_to_data(df: pd.DataFrame, target_date: str | None = None) -> Path:
 
     new_records = json.loads(df2.to_json(orient="records", force_ascii=False))
 
-    # 合并已有数据（保留 global 等之前抓取的数据）
+    # Merge existing archive records while retaining all discovery provenance on duplicate IDs.
     combined_path = date_dir / "combined.json"
     if combined_path.exists():
         existing = json.loads(combined_path.read_text(encoding="utf-8"))
-        new_ids = {r.get("id") for r in new_records}
-        kept = [r for r in existing if r.get("id") not in new_ids]
-        new_records = new_records + kept
-        print(f"\n  合并已有数据: 保留 {len(kept)} 条旧条目")
+        merged_by_id = {}
+        order = []
+        for record in existing + new_records:
+            vid = record.get("id")
+            if not vid:
+                # Keep malformed/legacy records rather than accidentally merging all empty IDs.
+                order.append((None, record))
+                continue
+            if vid not in merged_by_id:
+                merged_by_id[vid] = record.copy()
+                order.append((vid, None))
+                continue
+            target_record = merged_by_id[vid]
+            # Retain the previous primary category before refreshing fields from the new record.
+            previous_cat = target_record.get("cat")
+            if previous_cat:
+                old_cats = target_record.get("cats", [])
+                if not isinstance(old_cats, list):
+                    old_cats = [old_cats] if old_cats else []
+                if previous_cat not in old_cats:
+                    old_cats.append(previous_cat)
+                target_record["cats"] = old_cats
+            # New record fields refresh current stats/content, but provenance is unioned across runs.
+            for field in ("srcs", "qrs", "qts", "cats"):
+                old_values = target_record.get(field, [])
+                new_values = record.get(field, [])
+                if not isinstance(old_values, list):
+                    old_values = [old_values] if old_values else []
+                if not isinstance(new_values, list):
+                    new_values = [new_values] if new_values else []
+                combined = list(old_values)
+                for value in new_values:
+                    if value not in combined:
+                        combined.append(value)
+                if combined:
+                    target_record[field] = combined
+            target_record.update({k: v for k, v in record.items() if k not in {"srcs", "qrs", "qts", "cats"}})
+            # Preserve the legacy primary category while also keeping every category in cats.
+            if target_record.get("cat") and target_record["cat"] not in target_record.get("cats", []):
+                target_record.setdefault("cats", []).append(target_record["cat"])
+        new_records = [merged_by_id[vid] if vid is not None else record for vid, record in order]
+        print(f"\n  合并已有数据: 共 {len(new_records)} 条，重复视频保留全部来源")
 
     combined_path.write_text(json.dumps(new_records, ensure_ascii=False), encoding="utf-8")
     print(f"  已归档 {len(new_records)} 条 → {combined_path}")
@@ -988,7 +1085,7 @@ def main():
     frames = [df for df in [df_trends, df_cats] if not df.empty]
     if frames:
         df_all = pd.concat(frames, ignore_index=True)
-        df_all = df_all.drop_duplicates(subset=["video_id"], keep="first")
+        df_all = dedupe_videos(df_all)
         save_results(df_all, prefix="daily_combined")
         print_summary(df_all)
 

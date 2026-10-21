@@ -63,6 +63,13 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(circle 
 .tag-hint .th .tn{color:var(--cyan)}
 .tag-hint .th .tz{color:var(--text-dim);margin-left:4px}
 .tag-hint .th .tc{color:var(--gold);margin-left:4px;font-weight:700}
+.lens-row{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.lens-btn{padding:7px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-dim);font-size:.74rem;cursor:pointer;transition:all .2s}
+.lens-btn:hover{border-color:var(--cyan);color:var(--text)}
+.lens-btn.active{background:rgba(0,229,255,.12);border-color:var(--cyan);color:var(--cyan);font-weight:700}
+.scope-note{font-size:.68rem;color:var(--text-dim);margin:0 0 12px;line-height:1.5}
+.card-provenance{font-size:.58rem;color:var(--cyan);margin-top:5px;line-height:1.4;overflow-wrap:anywhere}
+.card-badge{display:inline-block;padding:2px 6px;border-radius:4px;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.18);margin:2px 4px 0 0}
 .bar2-right{display:flex;align-items:flex-start;gap:8px;flex-shrink:0}
 .ctrl{padding:5px 24px 5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-raised);color:var(--text-dim);font-size:.72rem;font-family:'Outfit',sans-serif;cursor:pointer;outline:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='8' height='5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l4 5 4-5' fill='%236e6e88'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;transition:all .2s}
 .ctrl:hover,.ctrl:focus{border-color:var(--cyan);color:var(--text)}
@@ -128,6 +135,15 @@ footer{text-align:center;margin-top:32px;padding:14px;border-top:1px solid var(-
     <div class="ptab" data-p="global"><span class="ptab-icon">🌐</span>GLOBAL</div>
     <div class="ptab" data-p="CN"><span class="ptab-icon">🇨🇳</span>抖音 CN</div>
   </div>
+
+  <div class="lens-row" id="lens-row" aria-label="研究视角">
+    <button class="lens-btn active" data-lens="all">全部内容</button>
+    <button class="lens-btn" data-lens="fresh">⚡ 72小时新发布</button>
+    <button class="lens-btn" data-lens="game">🎮 新游戏 / 新玩法</button>
+    <button class="lens-btn" data-lens="social">🧑‍🤝‍🧑 社交玩法</button>
+    <button class="lens-btn" data-lens="horror">👻 恐怖文化</button>
+  </div>
+  <div class="scope-note">地区筛选表示视频被哪个查询标签组发现，不代表已验证的观众所在地。新加坡 / 马来西亚的独立采样尚未接入。</div>
 
   <div class="bar2" id="bar2">
     <div class="bar2-left" id="bar2-left">
@@ -290,12 +306,30 @@ var TAG_INFO={
   }
 };
 
-var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSort='p',curTime='7d',filtered=[],INSIGHTS=null,curDateStr='';
+var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curLens='all',curSort='p',curTime='7d',filtered=[],INSIGHTS=null,curDateStr='';
 
 function fmt(n){if(!n)return'0';n=+n;return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':n.toString()}
 function dur(s){if(!s)return'';s=+s;return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
-function isW7(t){if(!t)return false;return(Date.now()-new Date(t.replace(' ','T')).getTime())<7*864e5}
+function isW7(t){if(!t)return false;var age=Date.now()-new Date(t.replace(' ','T')).getTime();return age>=0&&age<7*864e5}
+function videoText(d){return [d.d,d.zh,d.h,d.url,d.qt,Array.isArray(d.qts)?d.qts.join(' '):'',Array.isArray(d.cats)?d.cats.join(' '):''].join(' ').toLowerCase()}
+function isExcludedGame(d){return /(^|[^a-z])(mlbb|mobile legends|mobilelegends|free fire|freefire|garena free fire|rov thailand|rovthailand)([^a-z]|$)/i.test(videoText(d))}
+function matchesLens(d){
+  var text=videoText(d), cat=d.cat||'', cats=Array.isArray(d.cats)?d.cats:[];
+  if(curLens==='all')return true;
+  if(curLens==='fresh'){
+    if(!d.t)return false;
+    var age=Date.now()-new Date(String(d.t).replace(' ','T')).getTime();
+    return age>=0&&age<=72*3600*1000;
+  }
+  if(curLens==='game'){
+    if(isExcludedGame(d))return false;
+    return cat==='gaming'||cats.indexOf('gaming')>=0||/roblox|indie.?game|new.?game|co.?op.?horror|social.?deduction|party.?game|gameplay|multiplayer|steam|เกมใหม่|เกมผี|เกมอินดี้/i.test(text);
+  }
+  if(curLens==='social')return /prank|friends?|group challenge|party.?game|social.?deduction|co.?op|cooperative|multiplayer|hide.?and.?seek|among.?us|board.?game|背刺|整蛊|朋友|多人|合作|猜疑|狼人杀|同学|เพื่อน|เล่นกับเพื่อน|main bareng|mabar|teman|kaibigan|tropa/i.test(text);
+  if(curLens==='horror')return cat==='horror'||cats.indexOf('horror')>=0||/horror|scary|ghost|haunt|paranormal|jumpscare|analog.?horror|kuntilanak|pocong|pontianak|aswang|engkanto|cerita seram|cerita horor|หนังผี|สยองขวัญ|ผีไทย|เรื่องผี|multo|鬼故事|恐怖|灵异|鬼怪|都市传说/i.test(text);
+  return true;
+}
 
 function updateHint(){
   var el=document.getElementById('tag-hint');
@@ -354,13 +388,17 @@ function doFilter(){
     if(curPrimary==='global'){if(d.r!=='global')return false;}
     else if(curPrimary==='CN'){if(d.r!=='CN')return false;}
     else{if(d.r==='global'||d.r==='CN')return false;if(curPrimary!=='all'&&d.r!==curPrimary)return false;}
-    if(curCat!=='all'&&d.cat!==curCat)return false;
+    if(curCat!=='all'&&d.cat!==curCat&&!(Array.isArray(d.cats)&&d.cats.indexOf(curCat)>=0))return false;
     if(curTime==='7d'&&!isW7(d.t))return false;
+    if(!matchesLens(d))return false;
     return true;
   });
   if(curSort==='t')filtered.sort(function(a,b){return(b.t||'').localeCompare(a.t||'')});
   else filtered.sort(function(a,b){return(+b[curSort]||0)-(+a[curSort]||0)});
   document.getElementById('stats-bar').innerHTML='<b>'+filtered.length+'</b> / '+DATA.length+' videos';
+  var lensNames={all:'全部内容',fresh:'72小时新发布',game:'新游戏 / 新玩法',social:'社交玩法',horror:'恐怖文化'};
+  var stats=document.getElementById('stats-bar');
+  stats.title='研究视角：'+lensNames[curLens]+'；新发布视角基于视频发布时间，不等同于热度增长。';
 }
 
 function card(it,i){
@@ -369,7 +407,11 @@ function card(it,i){
   var img=covSrc?'<img src="'+esc(covSrc)+'" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">':'';
   var noI='<div class="no-img" style="'+(covSrc?'display:none':'display:flex')+'">▶</div>';
   var rCls=(it.r||'').toLowerCase();
-  return '<a class="card" href="'+esc(link)+'" target="_blank" rel="noopener" style="animation-delay:'+(i%PAGE*.02)+'s"><div class="card-img">'+img+noI+'<div class="ov"><div class="tri"></div></div><span class="pill pill-dur">'+dur(it.dur)+'</span><span class="pill pill-r '+rCls+'">'+esc(it.r)+'</span></div><div class="card-bd"><div class="card-desc">'+esc(it.d)+'</div>'+(getZhLabel(it)?'<div class="card-zh">'+esc(getZhLabel(it))+'</div>':'')+'<div class="card-author">'+esc(it.au||it.an)+'</div><div class="card-nums"><div class="card-num"><b>'+fmt(it.p)+'</b><small>plays</small></div><div class="card-num"><b>'+fmt(it.l)+'</b><small>likes</small></div><div class="card-num"><b>'+fmt(it.cm)+'</b><small>cmts</small></div><div class="card-num"><b>'+fmt(it.sh)+'</b><small>shares</small></div></div><div class="card-foot"><span class="card-tags">'+esc(it.h)+'</span><span class="card-date">'+(it.t?it.t.split(' ')[0]:'')+'</span></div></div></a>';
+  var provenance=[];
+  if(Array.isArray(it.srcs)){it.srcs.forEach(function(src){if(src&&typeof src==='object'&&src.tag&&provenance.indexOf(src.tag)<0)provenance.push(src.tag)})}
+  if(!provenance.length&&it.qt)provenance.push(it.qt);
+  var provenanceHtml=provenance.length?'<div class="card-provenance">发现标签：'+provenance.slice(0,5).map(function(x){return '<span class="card-badge">#'+esc(x)+'</span>'}).join('')+(provenance.length>5?' <span>+'+(provenance.length-5)+'</span>':'')+'</div>':'';
+  return '<a class="card" href="'+esc(link)+'" target="_blank" rel="noopener" style="animation-delay:'+(i%PAGE*.02)+'s"><div class="card-img">'+img+noI+'<div class="ov"><div class="tri"></div></div><span class="pill pill-dur">'+dur(it.dur)+'</span><span class="pill pill-r '+rCls+'">'+esc(it.r)+'</span></div><div class="card-bd"><div class="card-desc">'+esc(it.d)+'</div>'+(getZhLabel(it)?'<div class="card-zh">'+esc(getZhLabel(it))+'</div>':'')+'<div class="card-author">'+esc(it.au||it.an)+'</div><div class="card-nums"><div class="card-num"><b>'+fmt(it.p)+'</b><small>plays</small></div><div class="card-num"><b>'+fmt(it.l)+'</b><small>likes</small></div><div class="card-num"><b>'+fmt(it.cm)+'</b><small>cmts</small></div><div class="card-num"><b>'+fmt(it.sh)+'</b><small>shares</small></div></div><div class="card-foot"><span class="card-tags">'+esc(it.h)+'</span><span class="card-date">'+(it.t?it.t.split(' ')[0]:'')+'</span></div>'+provenanceHtml+'</div></a>';
 }
 
 function render(){
@@ -408,6 +450,11 @@ fetch('data/dates.json').then(function(r){return r.json()}).then(function(dates)
 
 // Events
 document.getElementById('date-sel').addEventListener('change',function(){loadDate(this.value)});
+document.getElementById('lens-row').addEventListener('click',function(e){
+  var b=e.target.closest('.lens-btn');if(!b)return;
+  this.querySelectorAll('.lens-btn').forEach(function(x){x.classList.remove('active')});
+  b.classList.add('active');curLens=b.dataset.lens;page=1;doFilter();render();
+});
 document.getElementById('primary-tabs').addEventListener('click',function(e){
   var t=e.target.closest('.ptab');if(!t)return;
   this.querySelectorAll('.ptab').forEach(function(x){x.classList.remove('active')});
