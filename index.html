@@ -142,6 +142,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;back
 .rbx-intro{margin:5px 0 7px;font-size:.84rem;line-height:1.6;color:var(--text)}
 .rbx-meta{display:flex;flex-wrap:wrap;gap:6px}
 .rbx-chip{font-family:var(--mono);font-size:.62rem;letter-spacing:.06em;padding:1px 7px;border:1px solid var(--border);color:var(--text-dim)}
+.rbx-links{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px}
+.rbx-links a{font-family:var(--mono);font-size:.66rem;letter-spacing:.06em;color:var(--text-dim);text-decoration:none;border-bottom:1px solid var(--border);transition:all .2s}
+.rbx-links a:hover{color:var(--accent);border-bottom-color:var(--accent)}
 .rbx-chip.hot{border-color:var(--accent);color:var(--accent)}
 .rbx-stats{display:grid;grid-template-columns:repeat(3,auto);gap:0 22px;text-align:right}
 .rbx-stats b{display:block;font-family:var(--mono);font-weight:500;font-size:.9rem;font-variant-numeric:tabular-nums;color:var(--text)}
@@ -175,7 +178,6 @@ footer{display:flex;justify-content:space-between;margin-top:48px;padding:14px 0
     <div class="ptab" data-p="MY"><span class="ptab-icon">🇲🇾</span>马来西亚</div>
     <div class="ptab" data-p="SG"><span class="ptab-icon">🇸🇬</span>新加坡</div>
     <div class="ptab" data-p="global"><span class="ptab-icon">🌐</span>全球</div>
-    <div class="ptab" data-p="CN"><span class="ptab-icon">🇨🇳</span>抖音</div>
   </div>
 
   <div class="scope-note">地区筛选表示视频被哪个本地化标签组发现，不代表已验证的观众所在地；跨国通用标签（如 #roblox）归入「全球」。马来西亚、新加坡为新增采样地区，早期周数据中没有；新加坡暂无恐怖分类。</div>
@@ -190,7 +192,6 @@ footer{display:flex;justify-content:space-between;margin-top:48px;padding:14px 0
         <button class="cbtn" data-c="horror">👻 恐怖</button>
         <button class="cbtn" data-c="cute">🐱 萌宠</button>
         <button class="cbtn" data-c="dance">💃 舞蹈</button>
-        <button class="cbtn" data-c="food">🍜 美食</button>
       </div>
       <div class="tag-hint" id="tag-hint"></div>
     </div>
@@ -297,16 +298,9 @@ var HASH_ZH={
   'dance':'舞蹈','challenge':'挑战','tiktokdance':'TikTok舞蹈',
   'joget':'印尼舞蹈','danceindonesia':'印尼舞蹈','viral':'病毒式传播',
   'เต้น':'泰国舞蹈','dancechallenge':'舞蹈挑战','เต้นออนไลน์':'线上舞蹈','tiktokthai':'泰国TikTok',
-  'pinoydance':'菲律宾舞蹈',
-  // 美食
-  'masak':'烹饪','kuliner':'印尼美食','foodindonesia':'印尼美食',
-  'masakanindo':'印尼菜','resepmasak':'食谱','makanan':'食物',
-  'อาหาร':'泰国美食','อาหารไทย':'泰国料理','ทำอาหาร':'烹饪',
-  'เมนูอร่อย':'美味菜单','อาหารอร่อย':'好吃的','ของกิน':'食物',
-  'foodph':'菲律宾美食','filipinofood':'菲律宾料理','pinoyrecipe':'菲律宾食谱',
-  'lutongbahay':'家常菜','kakainin':'美食',
+  'pinoydance':'菲律宾舞蹈'
 };
-var CAT_ZH={'gaming':'游戏','comedy':'搞笑','entertainment':'娱乐','horror':'恐怖/灵异','cute':'萌娃/萌宠','dance':'舞蹈/挑战','food':'美食','trending':'热门排行','global_trending':'全球热门'};
+var CAT_ZH={'gaming':'游戏','comedy':'搞笑','entertainment':'娱乐','horror':'恐怖/灵异','cute':'萌娃/萌宠','dance':'舞蹈/挑战','trending':'热门排行','global_trending':'全球热门'};
 
 function getZhLabel(it){
   if(it.zh)return it.zh;
@@ -326,8 +320,7 @@ var TAG_INFO={
     PH:['robloxph','pinoygamer','gamingph','gamingphilippines'],
     MY:['robloxmalaysia','gamingmalaysia','gamermalaysia'],
     SG:['sggaming'],
-    global:['roblox','robloxhorror','horrorgame','indiegame','coophorror','partygame','socialdeduction','newgames','gaming'],
-    CN:['游戏','手游','原神','王者荣耀','和平精英','英雄联盟手游','明日方舟','游戏解说']
+    global:['roblox','robloxhorror','horrorgame','indiegame','coophorror','partygame','socialdeduction','newgames','gaming']
   },
   comedy:{
     ID:['komedi','ngakak','videolucu','lucu'],
@@ -335,8 +328,7 @@ var TAG_INFO={
     PH:['pinoycomedy','pinoyfunny','hugot','pinoytiktok','realtalk'],
     MY:['lawak','lawakmalaysia','kelakar','lawakhabis'],
     SG:['sgtiktok','singlish','sgmemes'],
-    global:['funny','meme','prank'],
-    CN:['搞笑','沙雕','整活','幽默','搞笑视频','喜剧','段子']
+    global:['funny','meme','prank']
   },
   entertainment:{
     ID:['drakor','sinetron','gosip','dramakorea'],
@@ -344,16 +336,14 @@ var TAG_INFO={
     PH:['kdramaph','showbiz','chismis','chisme','opm'],
     MY:['dramamelayu','dramamalaysia','artismalaysia','filemmelayu'],
     SG:['mediacorp','sgentertainment'],
-    global:['kdrama','movietok'],
-    CN:['娱乐','明星','追剧','国产剧','电影','综艺','八卦']
+    global:['kdrama','movietok']
   },
   horror:{
     ID:['ceritahoror','pocong','hororindonesia','kuntilanak','misteri'],
     TH:['เล่าเรื่องผี','สยองขวัญ','ผีไทย','เรื่องผี','ความลึกลับ'],
     PH:['pinoyhorror','aswang','multo','engkanto'],
     MY:['seram','ceritaseram','hantu','pontianak'],
-    global:['horror','scaryprank','jumpscare','creepy','analoghorror'],
-    CN:['恐怖','灵异','鬼故事','悬疑','恐怖游戏','都市传说','民间故事']
+    global:['horror','scaryprank','jumpscare','creepy','analoghorror']
   },
   cute:{
     ID:['bayilucu','anaklucu','kucinglucu','hewanlucu','kucing','bayi'],
@@ -361,8 +351,7 @@ var TAG_INFO={
     PH:['pinoycat','pinoypets','askal','babies','cutepets'],
     MY:['kucingcomel','comel','babycomel','anakcomel'],
     SG:['sgpets','catsofsingapore','dogsofsingapore'],
-    global:['cute','cuteanimals','cutebaby'],
-    CN:['萌宠','可爱','萌娃','猫咪','狗狗','宠物','治愈']
+    global:['cute','cuteanimals','cutebaby']
   },
   dance:{
     ID:['jedagjedug','danceindonesia'],
@@ -370,17 +359,7 @@ var TAG_INFO={
     PH:['budots','pinoydance'],
     MY:['dancemalaysia'],
     SG:['sgdance','dancesg'],
-    global:['dancechallenge','tiktokdance','choreography'],
-    CN:['舞蹈','挑战','街舞','古风舞蹈','舞蹈教学','热舞']
-  },
-  food:{
-    ID:['masak','kuliner','foodindonesia','masakanindo','resepmasak','makanan'],
-    TH:['กินกับtiktok','สตรีทฟู้ด','ทำอาหาร','เมนูอร่อย','อาหารอร่อย','ของกิน'],
-    PH:['foodph','filipinofood','pinoyrecipe','lutongbahay'],
-    MY:['malaysianfood','resepi','masakanmelayu','makananmalaysia'],
-    SG:['sgfoodie','sgfood','singaporefood','sghawker'],
-    global:['food','cooking','recipe','foodtiktok','streetfood'],
-    CN:['美食','吃播','探店','家常菜','烹饪','小吃','火锅']
+    global:['dancechallenge','tiktokdance','choreography']
   }
 };
 
@@ -393,6 +372,8 @@ function videoRegions(d){var rs=Array.isArray(d.qrs)?d.qrs.slice():[];if(d.r&&rs
 function videoText(d){return [d.d,d.zh,d.h,d.qt,Array.isArray(d.qts)?d.qts.join(' '):'',Array.isArray(d.cats)?d.cats.join(' '):''].join(' ').toLowerCase()}
 function isExcludedGame(d){return /(^|[^a-z])(mlbb|mobile legends|mobilelegends|free fire|freefire|garena free fire|rov thailand|rovthailand|rov)([^a-z]|$)/i.test(videoText(d))}
 function isAge(t,ms){if(!t)return false;var age=Date.now()-new Date(String(t).replace(' ','T')).getTime();return age>=0&&age<=ms}
+// 已停止采集的抖音 CN、美食：历史周数据加载时剔除
+function isRetired(d){var rs=videoRegions(d);if(rs.length&&rs.every(function(r){return r==='CN'}))return true;var cs=Array.isArray(d.cats)&&d.cats.length?d.cats:[d.cat];return cs.every(function(c){return c==='food'})}
 function inCat(d,c){return d.cat===c||(Array.isArray(d.cats)&&d.cats.indexOf(c)>=0)}
 // 游戏、恐怖分类除标签组外，还收录其他分类中文本命中关键词的视频
 function matchesCat(d){
@@ -410,8 +391,8 @@ function updateHint(){
   var el=document.getElementById('tag-hint');
   if(curPrimary==='global'||curCat==='all'){el.innerHTML='';return}
   var info=TAG_INFO[curCat];if(!info){el.innerHTML='';return}
-  var regions=(curPrimary==='all')?['ID','TH','PH','MY','SG']:(curPrimary==='CN'?['CN']:[curPrimary]);
-  var rn={ID:'🇮🇩 印尼',TH:'🇹🇭 泰国',PH:'🇵🇭 菲律宾',MY:'🇲🇾 马来西亚',SG:'🇸🇬 新加坡',global:'🌐 全球',CN:'🇨🇳 抖音CN'};
+  var regions=(curPrimary==='all')?['ID','TH','PH','MY','SG']:[curPrimary];
+  var rn={ID:'🇮🇩 印尼',TH:'🇹🇭 泰国',PH:'🇵🇭 菲律宾',MY:'🇲🇾 马来西亚',SG:'🇸🇬 新加坡',global:'🌐 全球'};
   var parts=[];
   regions.forEach(function(r){
     var tags=info[r];if(!tags||!tags.length)return;
@@ -440,8 +421,8 @@ function mdToHtml(s){
     .replace(/\n/g,'<br>');
 }
 
-var REGION_LABEL={'all':'东南亚','ID':'印尼','TH':'泰国','PH':'菲律宾','MY':'马来西亚','SG':'新加坡','global':'全球','CN':'中国抖音'};
-var CAT_LABEL={'all':'全类型','gaming':'游戏','comedy':'搞笑','entertainment':'娱乐','horror':'恐怖','cute':'萌宠','dance':'舞蹈','food':'美食'};
+var REGION_LABEL={'all':'东南亚','ID':'印尼','TH':'泰国','PH':'菲律宾','MY':'马来西亚','SG':'新加坡','global':'全球'};
+var CAT_LABEL={'all':'全类型','gaming':'游戏','comedy':'搞笑','entertainment':'娱乐','horror':'恐怖','cute':'萌宠','dance':'舞蹈'};
 
 function updateInsight(){
   var panel=document.getElementById('insight-panel');
@@ -463,8 +444,7 @@ function doFilter(){
   filtered=DATA.filter(function(d){
     var rs=videoRegions(d);
     if(curPrimary==='global'){if(rs.indexOf('global')<0)return false;}
-    else if(curPrimary==='CN'){if(rs.indexOf('CN')<0)return false;}
-    else if(curPrimary==='all'){if(!rs.some(function(r){return r!=='global'&&r!=='CN'}))return false;}
+    else if(curPrimary==='all'){if(!rs.some(function(r){return r!=='global'}))return false;}
     else{if(rs.indexOf(curPrimary)<0)return false;}
     if(!matchesCat(d))return false;
     if(curTime==='7d'&&!isAge(d.t,7*864e5))return false;
@@ -502,6 +482,7 @@ function render(){
 }
 
 var RBX_AGE={'Maturity: Minimal':'内容分级：极少','Maturity: Mild':'内容分级：轻度','Maturity: Moderate':'内容分级：中度','Maturity: Restricted':'内容分级：受限'};
+function rbxQuery(g){return encodeURIComponent(((g.name||'').replace(/\[[^\]]*\]|\([^)]*\)/g,'').replace(/[^\p{L}\p{N}\s'’:!&-]/gu,'').replace(/\s+/g,' ').trim())+' roblox')}
 function rbxIsHorror(g){return /horror|scary/i.test((g.genre||'')+' '+(g.genre2||'')+' '+(g.name||''))||/恐怖|惊悚|灵异/.test(g.intro||'')}
 function rbxIsNew(g){if(!g.created||!RBX)return false;var age=new Date(RBX.date)-new Date(g.created);return age>=0&&age<=90*864e5}
 function renderRoblox(){
@@ -529,10 +510,13 @@ function renderRoblox(){
     if(g.age)chips.push('<span class="rbx-chip">'+esc(RBX_AGE[g.age]||g.age.replace('Age Rating:','年龄分级：'))+'</span>');
     var icon=g.icon?'data/'+curDateStr+'/'+g.icon:'';
     rows.push('<li class="rbx-row" style="animation-delay:'+(rows.length%40*.02)+'s"><div class="rbx-rank"><b>'+String(i+1).padStart(2,'0')+'</b>'+delta+'</div>'
-      +(icon?'<img class="rbx-icon" src="'+esc(icon)+'" loading="lazy" referrerpolicy="no-referrer" alt="">':'<div class="rbx-icon"></div>')
+      +'<a href="'+esc(g.url||'#')+'" target="_blank" rel="noopener">'+(icon?'<img class="rbx-icon" src="'+esc(icon)+'" loading="lazy" referrerpolicy="no-referrer" alt="">':'<div class="rbx-icon"></div>')+'</a>'
       +'<div class="rbx-main"><a class="rbx-name" href="'+esc(g.url||'#')+'" target="_blank" rel="noopener">'+esc(g.zh_name||g.name)+'</a>'
       +(g.zh_name?'<span class="rbx-en">'+esc(g.name)+'</span>':'')
-      +(g.intro?'<p class="rbx-intro">'+esc(g.intro)+'</p>':'')+'<div class="rbx-meta">'+chips.join('')+'</div></div>'
+      +(g.intro?'<p class="rbx-intro">'+esc(g.intro)+'</p>':'')+'<div class="rbx-meta">'+chips.join('')+'</div>'
+      +'<div class="rbx-links">'+(g.url?'<a href="'+esc(g.url)+'" target="_blank" rel="noopener">游戏页 ↗</a>':'')
+      +'<a href="https://www.tiktok.com/search?q='+rbxQuery(g)+'" target="_blank" rel="noopener">TikTok 玩法 ↗</a>'
+      +'<a href="https://www.youtube.com/results?search_query='+rbxQuery(g)+'" target="_blank" rel="noopener">YouTube 实况 ↗</a></div></div>'
       +'<div class="rbx-stats"><div><b>'+fmt(g.players)+'</b><small>当前在线</small></div><div><b>'+rate+'</b><small>好评率</small></div><div><b>'+fmt(g.visits)+'</b><small>总访问</small></div></div></li>');
   });
   list.innerHTML=rows.join('');
@@ -557,7 +541,7 @@ function loadDate(dateStr){
     INSIGHTS=d;updateInsight();
   }).catch(function(){});
   fetch('data/'+dateStr+'/combined.json?t='+Date.now()).then(function(r){return r.json()}).then(function(d){
-    DATA=d;page=1;doFilter();render();
+    DATA=d.filter(function(x){return !isRetired(x)});page=1;doFilter();render();
   }).catch(function(e){
     document.getElementById('loading').textContent='数据加载失败：'+dateStr;
   });
