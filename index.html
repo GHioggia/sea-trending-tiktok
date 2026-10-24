@@ -151,6 +151,28 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;back
 .rbx-stats small{font-size:.62rem;color:var(--faint)}
 @media(max-width:760px){.rbx-row{grid-template-columns:48px 52px minmax(0,1fr);gap:12px}.rbx-icon{width:52px;height:52px}.rbx-stats{grid-column:3;text-align:left;gap:0 16px}.rbx-en{display:block;margin:2px 0 0}}
 
+/* Topics */
+.tp{padding:22px 0 26px;border-bottom:1px solid var(--border);animation:rise .45s cubic-bezier(.2,.7,.2,1) both}
+.tp-head{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:18px;align-items:start;margin-bottom:16px}
+.tp-rank{font-family:var(--serif);font-style:italic;font-size:2.1rem;line-height:.85;color:var(--faint)}
+.tp-tag{font-family:var(--mono);font-size:1.05rem;color:var(--text);text-decoration:none}
+.tp-tag:hover{color:var(--accent)}
+.tp-zh{margin:6px 0 8px;font-family:var(--zh-serif);font-size:.95rem;line-height:1.6;color:var(--text)}
+.tp-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.tp-spark{width:132px;height:34px}
+.tp-spark polyline{fill:none;stroke:var(--accent);stroke-width:1.6}
+.tp-spark polygon{fill:rgba(255,90,44,.12)}
+.tp-nums{font-family:var(--mono);font-size:.68rem;color:var(--text-dim);text-align:right}
+.tp-nums b{color:var(--text);font-weight:500}
+.tp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:22px 18px;margin-left:82px}
+.tp-grid .card-provenance,.tp-grid .card-tags{display:none}
+.tp-empty{margin-left:82px;font-size:.78rem;color:var(--faint)}
+.tp-others{margin-top:28px;padding-top:14px;border-top:3px double var(--rule)}
+.tp-others h3{font-family:var(--mono);font-weight:500;font-size:.66rem;letter-spacing:.16em;color:var(--text-dim);margin-bottom:10px}
+.tp-others span{display:inline-block;margin:0 14px 8px 0;font-size:.74rem;color:var(--text-dim)}
+.tp-others span em{font-style:normal;color:var(--faint);margin-left:4px;font-size:.66rem}
+@media(max-width:760px){.tp-head{grid-template-columns:44px minmax(0,1fr)}.tp-side{grid-column:2;align-items:flex-start}.tp-grid,.tp-empty{margin-left:0;grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 footer{display:flex;justify-content:space-between;margin-top:48px;padding:14px 0;border-top:3px double var(--rule);color:var(--faint);font-size:.64rem;font-family:var(--mono);letter-spacing:.12em}
 @media(max-width:760px){.shell{padding:18px 16px}.hdr{align-items:flex-start}.hdr .date-pick{margin-left:0}.hdr .stats{text-align:left}.primary-tabs{gap:18px}.bar2{flex-direction:column}.bar2-right{justify-content:flex-start}.grid{grid-template-columns:minmax(0,1fr)}.kicker span:last-child{display:none}}
 </style>
@@ -167,7 +189,7 @@ footer{display:flex;justify-content:space-between;margin-top:48px;padding:14px 0
     <div class="stats" id="stats-bar"></div>
   </div>
 
-  <div class="view-switch" id="view-switch"><button class="active" data-v="tiktok">TIKTOK 视频</button><button data-v="roblox">ROBLOX 榜单</button></div>
+  <div class="view-switch" id="view-switch"><button class="active" data-v="tiktok">TIKTOK 视频</button><button data-v="topics">本周新话题</button><button data-v="roblox">ROBLOX 榜单</button></div>
 
   <div id="tiktok-view">
   <div class="primary-tabs" id="primary-tabs">
@@ -205,6 +227,7 @@ footer{display:flex;justify-content:space-between;margin-top:48px;padding:14px 0
       </select>
       <select class="ctrl" id="sort-sel">
         <option value="p">播放量 ↓</option>
+        <option value="v" title="播放量 ÷ 发布天数，突出正在起量的新视频">起量速度 ↓</option>
         <option value="l">点赞 ↓</option>
         <option value="cm">评论 ↓</option>
         <option value="sh">分享 ↓</option>
@@ -222,6 +245,23 @@ footer{display:flex;justify-content:space-between;margin-top:48px;padding:14px 0
   <div class="grid" id="grid"></div>
   <button class="more" id="more" style="display:none">加载更多</button>
   <div class="empty-msg" id="empty-msg">没有符合当前筛选的视频</div>
+  </div>
+
+  <div id="topics-view" style="display:none">
+    <div class="primary-tabs" id="tp-countries">
+      <div class="ptab active" data-tc="ID">印尼</div>
+      <div class="ptab" data-tc="TH">泰国</div>
+      <div class="ptab" data-tc="PH">菲律宾</div>
+      <div class="ptab" data-tc="MY">马来西亚</div>
+      <div class="ptab" data-tc="SG">新加坡</div>
+    </div>
+    <div class="bar2">
+      <div class="bar2-left">
+        <div class="scope-note">来自 TikTok 创意中心各国近 7 天热门话题榜，AI 分类后剔除新闻、体育、促销和低参考价值话题；代表视频为该话题近 7 天的搜索结果。中文释义由 AI 生成，「含义不明」表示 AI 不确定，请结合视频判断。</div>
+      </div>
+    </div>
+    <div id="tp-list"></div>
+    <div class="empty-msg" id="tp-empty">本期暂无新话题数据</div>
   </div>
 
   <div id="roblox-view" style="display:none">
@@ -363,7 +403,7 @@ var TAG_INFO={
   }
 };
 
-var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSocial=false,showMajor=false,curView='tiktok',RBX=null,RBX_PREV=null,rbxCountry='all',rbxSort='top-trending',rbxHorror=false,rbxNew=false,curSort='p',curTime='7d',filtered=[],INSIGHTS=null,curDateStr='';
+var DATA=[],DATES=[],PAGE=30,page=1,curPrimary='all',curCat='all',curSocial=false,showMajor=false,curView='tiktok',TOPICS=null,TOPIC_VIDEOS={},tpCountry='ID',RBX=null,RBX_PREV=null,rbxCountry='all',rbxSort='top-trending',rbxHorror=false,rbxNew=false,curSort='p',curTime='7d',filtered=[],INSIGHTS=null,curDateStr='';
 
 function fmt(n){if(!n)return'0';n=+n;return n>=1e9?(n/1e9).toFixed(1)+'B':n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':n.toString()}
 function dur(s){if(!s)return'';s=+s;return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
@@ -374,6 +414,8 @@ function isExcludedGame(d){return /(^|[^a-z])(mlbb|mobile legends|mobilelegends|
 function isAge(t,ms){if(!t)return false;var age=Date.now()-new Date(String(t).replace(' ','T')).getTime();return age>=0&&age<=ms}
 // 已停止采集的抖音 CN、美食：历史周数据加载时剔除
 function isRetired(d){var rs=videoRegions(d);if(rs.length&&rs.every(function(r){return r==='CN'}))return true;var cs=Array.isArray(d.cats)&&d.cats.length?d.cats:[d.cat];return cs.every(function(c){return c==='food'})}
+// 起量速度：日均播放量，发布不足 1 天按 1 天计
+function velocity(d){if(!d.t)return 0;var days=(Date.now()-new Date(String(d.t).replace(' ','T')).getTime())/864e5;return (+d.p||0)/Math.max(1,days)}
 function inCat(d,c){return d.cat===c||(Array.isArray(d.cats)&&d.cats.indexOf(c)>=0)}
 // 游戏、恐怖分类除标签组外，还收录其他分类中文本命中关键词的视频
 function matchesCat(d){
@@ -453,6 +495,7 @@ function doFilter(){
     return true;
   });
   if(curSort==='t')filtered.sort(function(a,b){return(b.t||'').localeCompare(a.t||'')});
+  else if(curSort==='v')filtered.sort(function(a,b){return velocity(b)-velocity(a)});
   else filtered.sort(function(a,b){return(+b[curSort]||0)-(+a[curSort]||0)});
   if(curView!=='tiktok')return;
   var stats=document.getElementById('stats-bar');
@@ -528,7 +571,46 @@ function renderRoblox(){
   }
 }
 
+function sparkline(curve){
+  if(!curve||curve.length<2)return '';
+  var w=132,h=34,n=curve.length,pts=curve.map(function(v,i){return (i*(w-2)/(n-1)+1).toFixed(1)+','+(h-2-(v/100)*(h-4)).toFixed(1)});
+  return '<svg class="tp-spark" viewBox="0 0 '+w+' '+h+'"><polygon points="1,'+(h-1)+' '+pts.join(' ')+' '+(w-1)+','+(h-1)+'"/><polyline points="'+pts.join(' ')+'"/></svg>';
+}
+function renderTopics(){
+  var list=document.getElementById('tp-list'),empty=document.getElementById('tp-empty');
+  var all=TOPICS&&TOPICS.topics?(TOPICS.topics[tpCountry]||[]):[];
+  var picked=all.filter(function(t){return t.picked});
+  var trendName={'new':'本周新冒出','rising':'上升中'};
+  list.innerHTML=picked.map(function(t,i){
+    var chips=[];
+    if(t.type)chips.push('<span class="rbx-chip">'+esc(t.type)+'</span>');
+    if(t.trend)chips.push('<span class="rbx-chip hot">'+trendName[t.trend]+'</span>');
+    if(t.attention==='高')chips.push('<span class="rbx-chip hot">重点关注</span>');
+    var vids=(t.videos||[]).map(function(id){return TOPIC_VIDEOS[id]}).filter(Boolean).sort(function(a,b){return(+b.p||0)-(+a.p||0)}).slice(0,5);
+    return '<section class="tp" style="animation-delay:'+(i*.04)+'s"><div class="tp-head"><div class="tp-rank">'+String(i+1).padStart(2,'0')+'</div>'
+      +'<div><a class="tp-tag" href="https://www.tiktok.com/tag/'+encodeURIComponent(t.tag)+'" target="_blank" rel="noopener">#'+esc(t.tag)+'</a>'
+      +'<p class="tp-zh">'+esc(t.zh||'（暂无释义）')+'</p><div class="rbx-meta">'+chips.join('')+'</div></div>'
+      +'<div class="tp-side">'+sparkline(t.curve)+'<div class="tp-nums">榜单第 <b>'+(t.rank||'—')+'</b> · 投稿 <b>'+fmt(t.posts)+'</b> · 播放 <b>'+fmt(t.views)+'</b></div></div></div>'
+      +(vids.length?'<div class="tp-grid">'+vids.map(card).join('')+'</div>':'<div class="tp-empty">未搜到近 7 天的代表视频</div>')+'</section>';
+  }).join('');
+  var others=all.filter(function(t){return !t.picked});
+  if(others.length)list.innerHTML+='<div class="tp-others"><h3>榜单上的其他话题（未入选）</h3>'+others.map(function(t){return '<span title="'+esc(t.zh||'')+'">#'+esc(t.tag)+(t.type?'<em>'+esc(t.type)+'</em>':'')+'</span>'}).join('')+'</div>';
+  empty.textContent=TOPICS?'该国本期没有入选的新话题':'本期暂无新话题数据（自 2026-10-26 起采集）';
+  empty.style.display=picked.length?'none':'block';
+  if(curView==='topics'){
+    var cn=TOPICS&&TOPICS.countries?TOPICS.countries[tpCountry]:tpCountry;
+    document.getElementById('stats-bar').innerHTML='<b>'+picked.length+'</b>个新话题 · '+esc(cn);
+  }
+}
+
 function loadDate(dateStr){
+  TOPICS=null;TOPIC_VIDEOS={};renderTopics();
+  fetch('data/'+dateStr+'/topics.json?t='+Date.now()).then(function(r){return r.ok?r.json():null}).then(function(d){
+    if(!d)return;
+    return fetch('data/'+dateStr+'/topic_videos.json?t='+Date.now()).then(function(r){return r.ok?r.json():[]}).then(function(vs){
+      TOPIC_VIDEOS={};vs.forEach(function(v){TOPIC_VIDEOS[v.id]=v});TOPICS=d;renderTopics();
+    });
+  }).catch(function(){});
   RBX=null;RBX_PREV=null;renderRoblox();
   fetch('data/'+dateStr+'/roblox.json?t='+Date.now()).then(function(r){return r.ok?r.json():null}).then(function(d){RBX=d;renderRoblox()}).catch(function(){});
   var prevDate=DATES[DATES.indexOf(dateStr)+1];
@@ -588,7 +670,13 @@ document.getElementById('view-switch').addEventListener('click',function(e){
   b.classList.add('active');curView=b.dataset.v;
   document.getElementById('tiktok-view').style.display=curView==='tiktok'?'':'none';
   document.getElementById('roblox-view').style.display=curView==='roblox'?'':'none';
-  if(curView==='roblox')renderRoblox();else doFilter();
+  document.getElementById('topics-view').style.display=curView==='topics'?'':'none';
+  if(curView==='roblox')renderRoblox();else if(curView==='topics')renderTopics();else doFilter();
+});
+document.getElementById('tp-countries').addEventListener('click',function(e){
+  var t=e.target.closest('.ptab');if(!t)return;
+  this.querySelectorAll('.ptab').forEach(function(x){x.classList.remove('active')});
+  t.classList.add('active');tpCountry=t.dataset.tc;renderTopics();
 });
 document.getElementById('rbx-countries').addEventListener('click',function(e){
   var t=e.target.closest('.ptab');if(!t)return;
