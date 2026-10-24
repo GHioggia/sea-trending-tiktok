@@ -205,6 +205,7 @@ footer{display:flex;justify-content:space-between;margin-top:48px;padding:14px 0
       </select>
       <select class="ctrl" id="sort-sel">
         <option value="p">播放量 ↓</option>
+        <option value="v" title="播放量 ÷ 发布天数，突出正在起量的新视频">起量速度 ↓</option>
         <option value="l">点赞 ↓</option>
         <option value="cm">评论 ↓</option>
         <option value="sh">分享 ↓</option>
@@ -374,6 +375,8 @@ function isExcludedGame(d){return /(^|[^a-z])(mlbb|mobile legends|mobilelegends|
 function isAge(t,ms){if(!t)return false;var age=Date.now()-new Date(String(t).replace(' ','T')).getTime();return age>=0&&age<=ms}
 // 已停止采集的抖音 CN、美食：历史周数据加载时剔除
 function isRetired(d){var rs=videoRegions(d);if(rs.length&&rs.every(function(r){return r==='CN'}))return true;var cs=Array.isArray(d.cats)&&d.cats.length?d.cats:[d.cat];return cs.every(function(c){return c==='food'})}
+// 起量速度：日均播放量，发布不足 1 天按 1 天计
+function velocity(d){if(!d.t)return 0;var days=(Date.now()-new Date(String(d.t).replace(' ','T')).getTime())/864e5;return (+d.p||0)/Math.max(1,days)}
 function inCat(d,c){return d.cat===c||(Array.isArray(d.cats)&&d.cats.indexOf(c)>=0)}
 // 游戏、恐怖分类除标签组外，还收录其他分类中文本命中关键词的视频
 function matchesCat(d){
@@ -453,6 +456,7 @@ function doFilter(){
     return true;
   });
   if(curSort==='t')filtered.sort(function(a,b){return(b.t||'').localeCompare(a.t||'')});
+  else if(curSort==='v')filtered.sort(function(a,b){return velocity(b)-velocity(a)});
   else filtered.sort(function(a,b){return(+b[curSort]||0)-(+a[curSort]||0)});
   if(curView!=='tiktok')return;
   var stats=document.getElementById('stats-bar');
