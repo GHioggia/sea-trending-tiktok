@@ -1,10 +1,8 @@
 """
 每周自动化调度脚本
 用法:
-    python3 weekly_job.py thursday   # 周四：抖音 CN 全分类
-    python3 weekly_job.py saturday   # 周六：萌宠 + 舞蹈 + 美食
-    python3 weekly_job.py sunday     # 周日：搞笑 + 娱乐
-    python3 weekly_job.py monday     # 周一：游戏 + 恐怖 → 合并 → 部署 → 通知
+    python3 weekly_job.py weekly     # 每周一次：TikTok 全分类全地区 + 抖音 CN → 翻译 → 部署 → 通知
+    python3 weekly_job.py monday     # 同 weekly（兼容旧的周一定时任务）
 """
 
 import os
@@ -31,13 +29,12 @@ from scraper import (
     PaymentRequiredError,
 )
 
+# 每周一次跑完全部抓取；单次约 250 次调用，低于 DAILY_BUDGET。
 SCHEDULE = {
-    "thursday": {"categories": None, "regions": ["CN"], "platform": "douyin"},
-    "friday": {"categories": None, "regions": ["global"]},
-    "saturday": {"categories": ["cute", "dance", "food"]},
-    "sunday": {"categories": ["comedy", "entertainment"]},
-    "monday": {"categories": ["gaming", "horror"]},
+    "tiktok": {"categories": None, "regions": None},
+    "douyin": {"categories": None, "regions": ["CN"], "platform": "douyin"},
 }
+COMMANDS = ("weekly", "monday")
 
 DINGTALK_BOTS_FILE = Path("dingtalk_bots.json")
 PAGES_URL = os.getenv("PAGES_URL", "https://ghioggia.github.io/sea-trending-tiktok")
@@ -80,6 +77,8 @@ def run_scrape(day: str):
     print(f"  目标归档日期: {monday}")
     print(f"  今日预算剩余: {get_today_remaining()}/{DAILY_BUDGET}")
 
+    # FETCH_ERRORS 是模块级列表，同一进程内多段抓取需各自清空，避免重复告警。
+    FETCH_ERRORS.clear()
     try:
         if platform == "douyin":
             df = scrape_douyin_categories(videos_per_tag=20, categories=cats)
@@ -87,8 +86,8 @@ def run_scrape(day: str):
             df = scrape_categories(videos_per_tag=30, categories=cats, regions=regions)
     except PaymentRequiredError as e:
         print(f"  抓取中止: {e}")
-        notify_alert(day, "TikHub 余额不足，抓取已中止", [str(e), "请到 https://user.tikhub.io/ 充值后重跑本日任务"])
-        return None
+        notify_alert(day, "TikHub 余额不足，抓取已中止", [str(e), "请到 https://user.tikhub.io/ 充值后重跑本周任务"])
+        return False  # 区别于"无数据"的 None：调用方据此中止后续抓取
 
     if df.empty:
         print("  未获取到数据")
@@ -567,8 +566,10 @@ def _mark_notification_sent(monday: str):
     flag.write_text(date.today().isoformat(), encoding="utf-8")
 
 
-def run_monday():
-    combined_path = run_scrape("monday")
+def run_weekly():
+    for part in SCHEDULE:
+        if run_scrape(part) is False:
+            break
 
     monday = str(get_monday_date())
     data_file = DATA_DIR / monday / "combined.json"
@@ -608,16 +609,13 @@ def main():
         return
 
     day = sys.argv[1].lower()
-    if day not in SCHEDULE:
-        print(f"不支持的参数: {day}")
-        print(f"可选: {list(SCHEDULE.keys())}")
+    if day not in COMMANDS:
+        print(f"不支持的参数: {day}（已改为每周一次，不再按天拆分）")
+        print(f"可选: {list(COMMANDS)}")
         return
 
     try:
-        if day == "monday":
-            run_monday()
-        else:
-            run_scrape(day)
+        run_weekly()
     except Exception as e:
         notify_alert(day, "任务异常退出", [f"{type(e).__name__}: {e}"])
         raise

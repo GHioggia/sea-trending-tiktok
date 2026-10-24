@@ -33,6 +33,20 @@ def _load_dotenv(path=".env"):
 
 _load_dotenv(Path(__file__).parent / ".env")
 
+# 沙箱出站 HTTPS 经 mitmproxy 中间人，httpx（含 anthropic SDK）默认证书包不认其 CA；
+# 封面走 COVER_PROXY 时看到的是 CDN 真实证书，所以用 certifi + 沙箱 CA 的合并包。
+# 未显式配置时自动生效，非沙箱环境文件不存在则不生效。
+_SANDBOX_CA = Path("/opt/opensandbox/mitmproxy-ca-cert.pem")
+if not os.getenv("SSL_CERT_FILE") and _SANDBOX_CA.exists():
+    import certifi
+    _ca_bundle = Path(__file__).parent / "cache" / "ca-bundle.pem"
+    _ca_bundle.parent.mkdir(exist_ok=True)
+    _ca_bundle.write_text(
+        Path(certifi.where()).read_text(encoding="utf-8") + "\n" + _SANDBOX_CA.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    os.environ["SSL_CERT_FILE"] = str(_ca_bundle)
+
 BASE_URL = "https://api.tikhub.io"
 API_TOKEN = os.getenv("TIKHUB_API_TOKEN", "")
 DAILY_BUDGET = 500
@@ -727,7 +741,9 @@ def parse_douyin_video(item: dict, tag_name: str, category: str) -> dict:
     stats = item.get("statistics", {})
 
     cover_urls = (video.get("cover") or {}).get("url_list", [])
-    cover_url = cover_urls[0] if cover_urls else ""
+    # url_list[0] 通常是 HEIC：PIL 无法解码、Chrome 也不显示，优先取 JPEG/WebP 变体。
+    non_heic = [u for u in cover_urls if ".heic" not in u.split("?")[0]]
+    cover_url = (non_heic or cover_urls or [""])[0]
 
     create_time = item.get("create_time", 0)
     if isinstance(create_time, int) and create_time > 0:
