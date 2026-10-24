@@ -601,17 +601,20 @@ COLUMN_MAP = {
 DROP_COLS = {"play_url", "music_title", "source"}
 
 
+def _compact_records(df: pd.DataFrame) -> list[dict]:
+    """DataFrame → 前端使用的短字段记录"""
+    df2 = df.drop(columns=[c for c in DROP_COLS if c in df.columns], errors="ignore")
+    df2 = df2.rename(columns={k: v for k, v in COLUMN_MAP.items() if k in df2.columns})
+    return json.loads(df2.to_json(orient="records", force_ascii=False))
+
+
 def archive_to_data(df: pd.DataFrame, target_date: str | None = None) -> Path:
     """将 DataFrame 归档到 data/<date>/combined.json 并更新 dates.json，合并已有数据"""
     target = target_date or str(date.today())
     date_dir = DATA_DIR / target
     date_dir.mkdir(exist_ok=True)
 
-    # 重命名列、去掉不需要的列
-    df2 = df.drop(columns=[c for c in DROP_COLS if c in df.columns], errors="ignore")
-    df2 = df2.rename(columns={k: v for k, v in COLUMN_MAP.items() if k in df2.columns})
-
-    new_records = json.loads(df2.to_json(orient="records", force_ascii=False))
+    new_records = _compact_records(df)
 
     # Merge existing archive records while retaining all discovery provenance on duplicate IDs.
     combined_path = date_dir / "combined.json"
@@ -804,6 +807,119 @@ def print_summary(df: pd.DataFrame):
                 desc = str(row["desc"])[:45] + "..." if len(str(row["desc"])) > 45 else str(row["desc"])
                 print(f"    [{row['region']}] {desc}")
                 print(f"         播放: {int(row['play_count']):,}")
+
+
+# ─── Topic Discovery ─────────────────────────────────────────────────────────
+# 话题标签抓取依赖预设标签，漏掉新梗/新话题；这里用各国热门话题榜发现本周新话题，
+# 再用关键词搜索（近 7 天、按国家）取代表视频。两个接口都可能随 TikHub 变动失效。
+
+def api_post(endpoint: str, body: dict, use_cache: bool = True) -> dict:
+    if use_cache:
+        cached = _get_cached_response(endpoint, body)
+        if cached is not None:
+            return cached
+
+    if not check_budget():
+        raise RuntimeError("今日 API 预算已用完")
+
+    _increment_budget()
+    with httpx.Client(timeout=60) as client:
+        resp = client.post(f"{BASE_URL}{endpoint}", headers=get_headers(), json=body)
+        _check_payment(resp)
+        resp.raise_for_status()
+        data = resp.json()
+
+    if use_cache:
+        _set_cached_response(endpoint, body, data)
+    return data
+
+
+def fetch_trending_hashtags(country_code: str, period: int = 7, page: int = 1, limit: int = 50) -> dict:
+    """TikTok 创意中心各国热门话题榜（该接口只接受 POST）"""
+    return api_post("/api/v1/tiktok/ads/get_trends_hashtag_list", {
+        "country_code": country_code, "time_range": period, "page": page, "limit": limit,
+    })
+
+
+def fetch_video_search(keyword: str, region: str, publish_time: int = 7, count: int = 10) -> dict:
+    """App 端关键词搜索视频，publish_time=7 表示近 7 天发布"""
+    return api_get("/api/v1/tiktok/app/v3/fetch_video_search_result", {
+        "keyword": keyword, "count": count, "offset": 0, "region": region,
+        "publish_time": publish_time, "sort_type": 0,
+    })
+
+
+def parse_search_video(aweme: dict, region: str, keyword: str) -> dict:
+    """解析 App 端搜索结果：字段大体与标签接口兼容，时长为毫秒、话题在 text_extra"""
+    record = parse_tag_video(aweme, region, keyword, "topic")
+    dur = record.get("duration") or 0
+    record["duration"] = dur // 1000 if dur > 1000 else dur
+    tags = [t.get("hashtag_name", "") for t in aweme.get("text_extra") or [] if t.get("hashtag_name")]
+    if tags:
+        record["hashtags"] = ", ".join(tags)
+    # 搜索结果带创作者注册国家，比按查询标签推断的地区更可靠
+    record["creator_region"] = aweme.get("region", "")
+    # url_list[0] 通常是 HEIC（PIL 无法解码），从各封面字段里优先挑 JPEG/WebP 变体
+    video = aweme.get("video") or {}
+    urls = [u for key in ("cover", "origin_cover", "dynamic_cover") for u in (video.get(key) or {}).get("url_list", [])]
+    non_heic = [u for u in urls if ".heic" not in u.split("?")[0]]
+    if non_heic:
+        record["cover_url"] = non_heic[0]
+    return record
+
+
+def discover_trending_topics(countries: list[str], max_topics: int = 50) -> dict[str, list[dict]]:
+    """拉取各国近 7 天热门话题榜，返回 {国家: [话题]}"""
+    result = {}
+    for country in countries:
+        topics = []
+        page = 1
+        while len(topics) < max_topics:
+            data = fetch_trending_hashtags(country, page=page, limit=min(50, max_topics))
+            payload = data.get("data", {})
+            items = payload.get("items") or []
+            for it in items:
+                topics.append({
+                    "tag": it.get("hashtagName", ""),
+                    "rank": it.get("rankIndex"),
+                    "posts": it.get("publishCnt") or 0,
+                    "views": it.get("vv") or 0,
+                    "curve": [round(p.get("value") or 0) for p in it.get("popularityCurve") or []],
+                })
+            if not items or not (payload.get("pagination") or {}).get("hasMore"):
+                break
+            page += 1
+        result[country] = topics[:max_topics]
+        print(f"  [话题] {REGIONS.get(country, country).split()[0]}: {len(result[country])} 个热门话题")
+    return result
+
+
+def fetch_topic_videos(topics: list[tuple[str, str]], per_topic: int = 10) -> pd.DataFrame:
+    """按 (国家, 话题) 搜索近 7 天代表视频"""
+    rows = []
+    for country, tag in topics:
+        try:
+            data = fetch_video_search(tag, country, count=per_topic)
+            items = [x.get("aweme_info") for x in data.get("data", {}).get("search_item_list") or [] if x.get("aweme_info")]
+            rows.extend(parse_search_video(a, country, tag) for a in items)
+            print(f"  [话题] #{tag} [{country}]: {len(items)} 条")
+        except PaymentRequiredError:
+            raise
+        except Exception as e:
+            FETCH_ERRORS.append(f"话题搜索 #{tag} [{country}]: {e}")
+            print(f"  [话题] #{tag} [{country}]: 错误 {e}")
+    df = pd.DataFrame(rows)
+    return dedupe_videos(df) if not df.empty else df
+
+
+def archive_topic_videos(df: pd.DataFrame, target_date: str) -> Path:
+    """话题代表视频单独存 data/<date>/topic_videos.json（结构同 combined.json，每次覆盖）"""
+    path = DATA_DIR / target_date / "topic_videos.json"
+    path.parent.mkdir(exist_ok=True)
+    records = _compact_records(df) if not df.empty else []
+    path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
+    print(f"  [话题] 已归档 {len(records)} 条代表视频 → {path}")
+    return path
 
 
 # ─── Roblox Charts ───────────────────────────────────────────────────────────

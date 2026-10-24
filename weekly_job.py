@@ -29,9 +29,12 @@ from scraper import (
     PaymentRequiredError,
     fetch_roblox_charts,
     download_roblox_icons,
+    discover_trending_topics,
+    fetch_topic_videos,
+    archive_topic_videos,
 )
 
-# 每周一次跑完全部抓取；单次约 140 次调用，低于 DAILY_BUDGET。
+# 每周一次跑完全部抓取；标签约 140 次 + 新话题约 50 次调用，低于 DAILY_BUDGET。
 SCHEDULE = {
     "tiktok": {"categories": None, "regions": None},
 }
@@ -334,6 +337,96 @@ def _llm_call(prompt: str, max_tokens: int = 1024) -> str:
     raise last_err
 
 
+TOPIC_COUNTRIES = {"ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡"}
+TOPICS_PER_COUNTRY = 8
+TOPIC_TYPES = ["新梗", "挑战", "音乐舞蹈", "游戏", "恐怖灵异", "影视娱乐", "明星网红", "生活日常", "节日", "新闻时事", "体育", "品牌促销", "其他"]
+TOPIC_EXCLUDE_TYPES = {"新闻时事", "体育", "品牌促销"}
+TOPIC_PROMPT_TPL = """\
+以下是{country}本周 TikTok 热门话题榜，每行格式为「编号. #话题 | 投稿数 | 播放量 | 近7天热度曲线(0-100)」。
+为每个话题输出一行，格式为「编号. 类别｜中文释义｜关注度」：
+- 类别：从 {types} 中选一个
+- 中文释义：15-30 字，说明这个话题是什么、为什么火；不确定含义时写「含义不明」，不要编造
+- 关注度：对东南亚微恐休闲游戏团队做内容创意和营销的参考价值，填 高/中/低；MLBB、Free Fire、ROV 等头部竞品游戏话题记为 低
+按原编号逐行输出，不要解释，不要输出其他内容。
+
+{lines}"""
+
+
+def _topic_trend(curve: list[int]) -> str:
+    """根据 7 天热度曲线标记：new=本周从零冒出，rising=仍在上升"""
+    if len(curve) < 4:
+        return ""
+    if min(curve[:2]) <= 10 and max(curve[-3:]) >= 80:
+        return "new"
+    if curve[-1] >= 90 and curve[-1] - min(curve[:4]) >= 40:
+        return "rising"
+    return ""
+
+
+def _classify_topics(country_name: str, topics: list[dict]) -> None:
+    # 大模型偶尔漏行或格式不符，对未分类的话题补问一次
+    for _ in range(2):
+        pending = [t for t in topics if not t.get("type")]
+        if not pending:
+            return
+        lines = [f"{i}. #{t['tag']} | {t['posts']} | {t['views']} | {t['curve']}" for i, t in enumerate(pending, 1)]
+        try:
+            text = _llm_call(TOPIC_PROMPT_TPL.format(country=country_name, types="/".join(TOPIC_TYPES), lines="\n".join(lines)), max_tokens=4000)
+        except Exception as e:
+            print(f"  [话题] {country_name} 分类失败: {e}")
+            return
+        for line in text.splitlines():
+            m = re.match(r"\s*(\d+)[.、]\s*(.+?)\s*[｜|]\s*(.+?)\s*[｜|]\s*(高|中|低)", line)
+            if m and 1 <= int(m.group(1)) <= len(pending):
+                pending[int(m.group(1)) - 1].update({"type": m.group(2).strip(), "zh": m.group(3).strip(), "attention": m.group(4)})
+
+
+def run_topics(target_date: str):
+    """各国热门话题榜 → AI 分类筛选 → 搜索代表视频 → data/<date>/topics.json + topic_videos.json"""
+    print(f"\n[话题] 发现本周新话题 → {target_date}")
+    FETCH_ERRORS.clear()
+    try:
+        trending = discover_trending_topics(list(TOPIC_COUNTRIES))
+        picks = []
+        for country, topics in trending.items():
+            for t in topics:
+                t["trend"] = _topic_trend(t["curve"])
+            _classify_topics(TOPIC_COUNTRIES[country], topics)
+            # 关注度高直接入选；关注度中须是本周新冒出或上升中，排除常年泛话题
+            kept = [t for t in topics if t.get("type") not in TOPIC_EXCLUDE_TYPES
+                    and (t.get("attention") == "高" or (t.get("attention") == "中" and t["trend"]))]
+            kept.sort(key=lambda t: (t["attention"] != "高", t["trend"] == "", t["rank"] or 999))
+            for t in kept[:TOPICS_PER_COUNTRY]:
+                t["picked"] = True
+                picks.append((country, t["tag"]))
+        df = fetch_topic_videos(picks)
+        videos_path = archive_topic_videos(df, target_date)
+        if not df.empty:
+            download_covers(videos_path)
+            from translate_data import translate_file
+            translate_file(videos_path)
+        by_topic = {}
+        for v in json.loads(videos_path.read_text(encoding="utf-8")):
+            for src in v.get("srcs") or []:
+                by_topic.setdefault((src.get("query_region"), src.get("tag")), []).append(v["id"])
+        for country, topics in trending.items():
+            for t in topics:
+                if t.get("picked"):
+                    t["videos"] = by_topic.get((country, t["tag"]), [])
+        out = {"date": target_date, "fetched_at": datetime.now().isoformat(timespec="seconds"),
+               "countries": TOPIC_COUNTRIES, "topics": trending}
+        out_path = DATA_DIR / target_date / "topics.json"
+        out_path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        print(f"  [话题] 已归档 {len(picks)} 个重点话题 → {out_path}")
+        if FETCH_ERRORS:
+            notify_alert("weekly", f"话题视频搜索部分失败（{len(FETCH_ERRORS)} 个）", FETCH_ERRORS)
+    except PaymentRequiredError as e:
+        print(f"  [话题] 中止: {e}")
+    except Exception as e:
+        print(f"  [话题] 失败（不影响 TikTok 数据）: {e}")
+        notify_alert("weekly", "新话题发现失败", [f"{type(e).__name__}: {e}"])
+
+
 ROBLOX_INTRO_CACHE = Path("cache") / "roblox_intro.json"
 ROBLOX_INTRO_PROMPT_TPL = """\
 以下是 Roblox 游戏列表，每行格式为「编号. 名称 | 类型 | 开发者简介」。
@@ -617,11 +710,15 @@ def _mark_notification_sent(monday: str):
 
 
 def run_weekly():
+    paid_out = False
     for part in SCHEDULE:
         if run_scrape(part) is False:
+            paid_out = True
             break
 
     monday = str(get_monday_date())
+    if not paid_out:
+        run_topics(monday)
     run_roblox(monday)
     data_file = DATA_DIR / monday / "combined.json"
 
