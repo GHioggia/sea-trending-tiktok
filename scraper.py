@@ -68,6 +68,8 @@ REGIONS = {
     "ID": "印尼 Indonesia",
     "TH": "泰国 Thailand",
     "PH": "菲律宾 Philippines",
+    "MY": "马来西亚 Malaysia",
+    "SG": "新加坡 Singapore",
 }
 
 TREND_ORDER_FIELDS = {
@@ -77,68 +79,84 @@ TREND_ORDER_FIELDS = {
     "repost": "转发",
 }
 
+# 标签抓取接口不区分国家：同一标签放进多个地区会得到同一批视频，地区归属失真。
+# 因此各国只放本地化标签，跨国通用标签（roblox、analoghorror、kdrama 等）统一放 global。
+# 2026-10-24 按 10-26 抓取质量 + 标签视频量验证调整；SG 本地标签量小，恐怖分类暂无可用标签。
 CATEGORY_TAGS = {
     "gaming": {
         "name": "游戏",
         "tags": {
             # 以新玩法/小众游戏发现为主；不主动抓取 MLBB、Free Fire、ROV 等头部禁忌游戏。
-            "ID": ["roblox", "robloxhorror", "indiegame", "horrorgame", "coophorror", "gaming", "gameandroid", "onlinegame"],
-            "TH": ["roblox", "เกมผี", "เกมสยองขวัญ", "เกมอินดี้", "เกมใหม่", "gamingthailand", "gaming"],
-            "PH": ["roblox", "robloxhorror", "indiegame", "horrorgame", "coophorror", "gamingph", "gamingphilippines"],
-            "global": ["robloxhorror", "horrorgame", "indiegame", "coophorror", "partygame", "socialdeduction", "newgames", "gaming"],
+            "ID": ["robloxindonesia", "gamerindonesia", "gamehoror", "gameandroid", "onlinegame"],
+            "TH": ["robloxthailand", "เกมผี", "เกมสยองขวัญ", "เกมอินดี้", "เกมใหม่", "gamingthailand"],
+            "PH": ["robloxph", "pinoygamer", "gamingph", "gamingphilippines"],
+            "MY": ["robloxmalaysia", "gamingmalaysia", "gamermalaysia"],
+            "SG": ["sggaming"],
+            "global": ["roblox", "robloxhorror", "horrorgame", "indiegame", "coophorror", "partygame", "socialdeduction", "newgames", "gaming"],
         },
     },
     "comedy": {
         "name": "沙雕搞笑",
         "tags": {
-            "ID": ["komedi", "ngakak", "videolucu", "lucu", "kocak", "humor", "meme"],
+            "ID": ["komedi", "ngakak", "videolucu", "lucu"],
             "TH": ["ตลก", "ตลกไทย", "comedythailand", "คลิปตลก", "ฮาๆ", "สายฮา"],
-            "PH": ["pinoycomedy", "pinoyfunny", "hugot", "patama", "pinoytiktok", "realtalk"],
-            "global": ["funny", "meme", "comedy", "prank", "humor"],
+            "PH": ["pinoycomedy", "pinoyfunny", "hugot", "pinoytiktok", "realtalk"],
+            "MY": ["lawak", "lawakmalaysia", "kelakar", "lawakhabis"],
+            "SG": ["sgtiktok", "singlish", "sgmemes"],
+            "global": ["funny", "meme", "prank"],
         },
     },
     "entertainment": {
         "name": "娱乐(明星/剧集/电影)",
         "tags": {
-            "ID": ["drakor", "sinetron", "gosip", "kdrama", "gossip", "artis", "dramakorea"],
+            "ID": ["drakor", "sinetron", "gosip", "dramakorea"],
             "TH": ["ละคร", "ดารา", "thaidrama", "ละครไทย", "thaibl", "blseries", "บันเทิง"],
-            "PH": ["kdramaph", "showbiz", "chismis", "kdrama", "chisme", "opm"],
-            "global": ["kdrama", "celebrity", "trending", "viral", "movie"],
+            "PH": ["kdramaph", "showbiz", "chismis", "chisme", "opm"],
+            "MY": ["dramamelayu", "dramamalaysia", "artismalaysia", "filemmelayu"],
+            "SG": ["mediacorp", "sgentertainment"],
+            "global": ["kdrama", "movietok"],
         },
     },
     "horror": {
         "name": "恐怖/灵异",
         "tags": {
-            "ID": ["horor", "pocong", "hororindonesia", "setan", "jumpscare", "kuntilanak", "misteri", "analoghorror"],
-            "TH": ["หนังผี", "สยองขวัญ", "ผีไทย", "ผี", "เรื่องผี", "ความลึกลับ", "analoghorror"],
-            "PH": ["pinoyhorror", "aswang", "multo", "engkanto", "mangkukulam", "analoghorror"],
-            "global": ["horror", "scary", "scaryprank", "jumpscare", "creepy", "analoghorror"],
+            "ID": ["ceritahoror", "pocong", "hororindonesia", "kuntilanak", "misteri"],
+            "TH": ["เล่าเรื่องผี", "สยองขวัญ", "ผีไทย", "เรื่องผี", "ความลึกลับ"],
+            "PH": ["pinoyhorror", "aswang", "multo", "engkanto"],
+            "MY": ["seram", "ceritaseram", "hantu", "pontianak"],
+            "global": ["horror", "scaryprank", "jumpscare", "creepy", "analoghorror"],
         },
     },
     "cute": {
         "name": "萌娃/萌宠",
         "tags": {
-            "ID": ["bayilucu", "anaklucu", "kucinglucu", "hewanlucu", "kucing", "bayi", "cute"],
+            "ID": ["bayilucu", "anaklucu", "kucinglucu", "hewanlucu", "kucing", "bayi"],
             "TH": ["เด็กน่ารัก", "แมวน่ารัก", "น่ารัก", "สัตว์เลี้ยง", "ทารก", "หมาน่ารัก"],
-            "PH": ["cutebaby", "cuteanimals", "pinoycat", "babies", "pinoypets", "cutepets"],
-            "global": ["cute", "cuteanimals", "cutebaby", "pets", "catsoftiktok"],
+            "PH": ["pinoycat", "pinoypets", "askal", "babies", "cutepets"],
+            "MY": ["kucingcomel", "comel", "babycomel", "anakcomel"],
+            "SG": ["sgpets", "catsofsingapore", "dogsofsingapore"],
+            "global": ["cute", "cuteanimals", "cutebaby"],
         },
     },
     "dance": {
         "name": "舞蹈/挑战",
         "tags": {
-            "ID": ["dance", "challenge", "tiktokdance", "joget", "danceindonesia", "viral"],
-            "TH": ["เต้น", "dancechallenge", "challenge", "เต้นออนไลน์", "tiktokthai"],
-            "PH": ["dancechallenge", "pinoydance", "tiktokdance", "dance", "challenge"],
-            "global": ["dance", "dancechallenge", "tiktokdance", "choreography", "viral", "challenge"],
+            "ID": ["jedagjedug", "danceindonesia"],
+            "TH": ["เต้น", "เต้นออนไลน์", "ท่าเต้น"],
+            "PH": ["budots", "pinoydance"],
+            "MY": ["dancemalaysia"],
+            "SG": ["sgdance", "dancesg"],
+            "global": ["dancechallenge", "tiktokdance", "choreography"],
         },
     },
     "food": {
         "name": "美食",
         "tags": {
             "ID": ["masak", "kuliner", "foodindonesia", "masakanindo", "resepmasak", "makanan"],
-            "TH": ["อาหาร", "อาหารไทย", "ทำอาหาร", "เมนูอร่อย", "อาหารอร่อย", "ของกิน"],
-            "PH": ["foodph", "filipinofood", "pinoyrecipe", "lutongbahay", "kakainin"],
+            "TH": ["กินกับtiktok", "สตรีทฟู้ด", "ทำอาหาร", "เมนูอร่อย", "อาหารอร่อย", "ของกิน"],
+            "PH": ["foodph", "filipinofood", "pinoyrecipe", "lutongbahay"],
+            "MY": ["malaysianfood", "resepi", "masakanmelayu", "makananmalaysia"],
+            "SG": ["sgfoodie", "sgfood", "singaporefood", "sghawker"],
             "global": ["food", "cooking", "recipe", "foodtiktok", "streetfood"],
         },
     },
@@ -1092,6 +1110,129 @@ def print_summary(df: pd.DataFrame):
                 desc = str(row["desc"])[:45] + "..." if len(str(row["desc"])) > 45 else str(row["desc"])
                 print(f"    [{row['region']}] {desc}")
                 print(f"         播放: {int(row['play_count']):,}")
+
+
+# ─── Roblox Charts ───────────────────────────────────────────────────────────
+# Roblox explore-api 无官方文档、随时可能变更；沙箱直连会被断开，需走代理（ROBLOX_PROXY，缺省用 CLAUDE_WEB_PROXY）。
+# 经代理访问 Roblox 时 httpx 会被服务端直接断开，requests 正常，因此这里用 requests。
+
+ROBLOX_COUNTRIES = {"all": "全球", "ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡"}
+ROBLOX_SORTS = {"top-trending": "热门趋势", "up-and-coming": "新晋上升"}
+
+
+def _roblox_client():
+    import requests
+    session = requests.Session()
+    proxy = os.getenv("ROBLOX_PROXY") or os.getenv("CLAUDE_WEB_PROXY")
+    if proxy:
+        session.proxies = {"http": proxy, "https": proxy}
+    return session
+
+
+def _roblox_get(client, url: str, params: dict) -> dict:
+    last_err = None
+    for attempt in range(3):
+        try:
+            resp = client.get(url, params=params, timeout=30)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            last_err = e
+            time.sleep(2 * (attempt + 1))
+    raise last_err
+
+
+def fetch_roblox_charts() -> dict:
+    """抓取各国 Roblox 榜单（排除推广位），并补充游戏详情与图标地址"""
+    import uuid
+
+    charts = {}
+    games = {}
+    with _roblox_client() as client:
+        for sort_id, sort_name in ROBLOX_SORTS.items():
+            charts[sort_id] = {}
+            for country, country_name in ROBLOX_COUNTRIES.items():
+                data = _roblox_get(client, "https://apis.roblox.com/explore-api/v1/get-sort-content", {
+                    "sessionId": str(uuid.uuid4()), "sortId": sort_id, "device": "computer", "country": country,
+                })
+                ranked = []
+                for g in data.get("games", []):
+                    uid = str(g.get("universeId") or "")
+                    if not uid or g.get("isSponsored") or uid in ranked:
+                        continue
+                    ranked.append(uid)
+                    games.setdefault(uid, {}).update({
+                        "name": g.get("name", ""),
+                        "players": g.get("playerCount") or 0,
+                        "up": g.get("totalUpVotes") or 0,
+                        "down": g.get("totalDownVotes") or 0,
+                        "age": g.get("ageRecommendationDisplayName") or "",
+                    })
+                charts[sort_id][country] = ranked
+                print(f"  [Roblox] {sort_name} / {country_name}: {len(ranked)} 款")
+
+        uids = list(games)
+        for i in range(0, len(uids), 50):
+            batch = uids[i:i + 50]
+            data = _roblox_get(client, "https://games.roblox.com/v1/games", {"universeIds": ",".join(batch)})
+            for d in data.get("data", []):
+                g = games.get(str(d.get("id")))
+                if g is None:
+                    continue
+                g.update({
+                    "desc": (d.get("description") or "")[:600],
+                    "genre": d.get("genre_l1") or d.get("genre") or "",
+                    "genre2": d.get("genre_l2") or "",
+                    "visits": d.get("visits") or 0,
+                    "created": (d.get("created") or "")[:10],
+                    "updated": (d.get("updated") or "")[:10],
+                    "url": f"https://www.roblox.com/games/{d.get('rootPlaceId')}",
+                })
+        for i in range(0, len(uids), 100):
+            batch = uids[i:i + 100]
+            data = _roblox_get(client, "https://thumbnails.roblox.com/v1/games/icons", {
+                "universeIds": ",".join(batch), "size": "150x150", "format": "Png", "isCircular": "false",
+            })
+            for d in data.get("data", []):
+                g = games.get(str(d.get("targetId")))
+                if g is not None and d.get("state") == "Completed":
+                    g["icon_url"] = d.get("imageUrl", "")
+
+    print(f"  [Roblox] 共 {len(games)} 款游戏")
+    return {"countries": ROBLOX_COUNTRIES, "sorts": ROBLOX_SORTS, "charts": charts, "games": games}
+
+
+def download_roblox_icons(roblox: dict, out_dir: Path, size: int = 96, max_workers: int = 10) -> int:
+    """下载 Roblox 图标为本地 WebP，成功后写入 games[uid]['icon'] 相对路径"""
+    from concurrent.futures import ThreadPoolExecutor
+    from io import BytesIO
+    from PIL import Image
+
+    icon_dir = out_dir / "roblox"
+    icon_dir.mkdir(parents=True, exist_ok=True)
+    # 图标在 rbxcdn 上，与 TikTok 封面一样走 COVER_PROXY（网页代理访问 rbxcdn 会被重置）
+    proxy = os.getenv("COVER_PROXY", os.getenv("HTTPS_PROXY", ""))
+    client = httpx.Client(timeout=15, follow_redirects=True, proxy=proxy or None)
+
+    def _one(item):
+        uid, g = item
+        out_file = icon_dir / f"{uid}.webp"
+        if not out_file.exists():
+            try:
+                resp = client.get(g["icon_url"])
+                resp.raise_for_status()
+                Image.open(BytesIO(resp.content)).convert("RGB").resize((size, size), Image.LANCZOS).save(out_file, "WEBP", quality=80)
+            except Exception:
+                return False
+        g["icon"] = f"roblox/{uid}.webp"
+        return True
+
+    items = [(uid, g) for uid, g in roblox["games"].items() if g.get("icon_url")]
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        ok = sum(pool.map(_one, items))
+    client.close()
+    print(f"  [Roblox] 图标: 成功 {ok}, 失败 {len(items) - ok}")
+    return ok
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────

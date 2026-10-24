@@ -8,9 +8,10 @@
 import os
 import sys
 import json
+import re
 import shutil
 import subprocess
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -27,6 +28,8 @@ from scraper import (
     DATA_DIR,
     FETCH_ERRORS,
     PaymentRequiredError,
+    fetch_roblox_charts,
+    download_roblox_icons,
 )
 
 # 每周一次跑完全部抓取；单次约 250 次调用，低于 DAILY_BUDGET。
@@ -222,7 +225,7 @@ CAT_NAMES = {
     "gaming": "游戏", "comedy": "搞笑", "entertainment": "娱乐",
     "horror": "恐怖", "cute": "萌宠", "dance": "舞蹈", "food": "美食",
 }
-REGION_NAMES = {"ID": "印尼", "TH": "泰国", "PH": "菲律宾", "CN": "中国抖音"}
+REGION_NAMES = {"ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡", "CN": "中国抖音"}
 FIELDS_TO_KEEP = ["d", "zh", "cat", "r", "p", "l", "cm", "sh", "h"]
 
 CAT_PROMPTS = {
@@ -297,7 +300,7 @@ def _top_by_region(records: list[dict], n_per_region: int) -> list[dict]:
     for r in records:
         by_region.setdefault(r.get("r", "??"), []).append(r)
     result = []
-    for region in ["ID", "TH", "PH"]:
+    for region in ["ID", "TH", "PH", "MY", "SG"]:
         region_items = by_region.get(region, [])
         top = sorted(region_items, key=lambda x: (x.get("sh", 0) or 0), reverse=True)[:n_per_region]
         result.extend(top)
@@ -341,8 +344,65 @@ def _llm_call(prompt: str, max_tokens: int = 1024) -> str:
     raise last_err
 
 
+ROBLOX_INTRO_CACHE = Path("cache") / "roblox_intro.json"
+ROBLOX_INTRO_PROMPT_TPL = """\
+以下是 Roblox 游戏列表，每行格式为「编号. 名称 | 类型 | 开发者简介」。
+为每个游戏输出一行，格式为「编号. 中文名｜介绍」：
+- 中文名：简洁意译，专有名词可保留英文，去掉名称里的活动标记和表情（如 [UPDATE]、🎃）
+- 介绍：30-50 字，说明核心玩法和卖点；属于恐怖、多人合作或社交推理类时要点明
+按原编号逐行输出，不要解释，不要输出其他内容。
+
+{lines}"""
+
+
+def _generate_roblox_intros(games: dict) -> None:
+    """为缺少缓存的游戏生成中文名和介绍（按 universeId 永久缓存）"""
+    cache = json.loads(ROBLOX_INTRO_CACHE.read_text(encoding="utf-8")) if ROBLOX_INTRO_CACHE.exists() else {}
+    todo = [uid for uid in games if uid not in cache]
+    print(f"  [Roblox] 中文介绍: 已缓存 {len(games) - len(todo)}，需生成 {len(todo)}")
+    for i in range(0, len(todo), 20):
+        batch = todo[i:i + 20]
+        lines = []
+        for n, uid in enumerate(batch, 1):
+            g = games[uid]
+            desc = " ".join((g.get("desc") or "").split())[:300]
+            lines.append(f"{n}. {g.get('name', '')} | {g.get('genre', '')} {g.get('genre2', '')} | {desc}")
+        try:
+            text = _llm_call(ROBLOX_INTRO_PROMPT_TPL.format(lines="\n".join(lines)), max_tokens=3000)
+        except Exception as e:
+            print(f"  [Roblox] 中文介绍批次失败: {e}")
+            continue
+        for line in text.splitlines():
+            m = re.match(r"\s*(\d+)[.、]\s*(.+?)\s*[｜|]\s*(.+)", line)
+            if m and 1 <= int(m.group(1)) <= len(batch):
+                cache[batch[int(m.group(1)) - 1]] = {"zh_name": m.group(2).strip(), "intro": m.group(3).strip()}
+        ROBLOX_INTRO_CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
+    for uid, g in games.items():
+        g.update(cache.get(uid, {}))
+
+
+def run_roblox(target_date: str):
+    """抓取 Roblox 各国榜单 → 中文介绍 → 归档 data/<date>/roblox.json（不消耗 TikHub 额度）"""
+    print(f"\n[Roblox] 抓取榜单 → {target_date}")
+    try:
+        roblox = fetch_roblox_charts()
+        out_dir = DATA_DIR / target_date
+        download_roblox_icons(roblox, out_dir)
+        _generate_roblox_intros(roblox["games"])
+        for g in roblox["games"].values():
+            g.pop("desc", None)
+            g.pop("icon_url", None)
+        roblox.update({"date": target_date, "fetched_at": datetime.now().isoformat(timespec="seconds")})
+        out_path = out_dir / "roblox.json"
+        out_path.write_text(json.dumps(roblox, ensure_ascii=False), encoding="utf-8")
+        print(f"  [Roblox] 已归档 → {out_path}")
+    except Exception as e:
+        print(f"  [Roblox] 失败（不影响 TikTok 数据）: {e}")
+        notify_alert("weekly", "Roblox 榜单抓取失败", [f"{type(e).__name__}: {e}"])
+
+
 MIN_VIDEOS_FOR_INSIGHT = 5
-REGIONS_WITH_ALL = {"all": "全东南亚（印尼/泰国/菲律宾）", "ID": "印尼", "TH": "泰国", "PH": "菲律宾", "global": "全球", "CN": "中国抖音"}
+REGIONS_WITH_ALL = {"all": "全东南亚（印尼/泰国/菲律宾/马来西亚/新加坡）", "ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡", "global": "全球", "CN": "中国抖音"}
 
 
 def _top_sorted(records: list[dict], n: int) -> list[dict]:
@@ -572,6 +632,7 @@ def run_weekly():
             break
 
     monday = str(get_monday_date())
+    run_roblox(monday)
     data_file = DATA_DIR / monday / "combined.json"
 
     if data_file.exists():
