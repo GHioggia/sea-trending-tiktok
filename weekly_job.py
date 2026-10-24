@@ -1,7 +1,7 @@
 """
 每周自动化调度脚本
 用法:
-    python3 weekly_job.py weekly     # 每周一次：TikTok 全分类全地区 + 抖音 CN → 翻译 → 部署 → 通知
+    python3 weekly_job.py weekly     # 每周一次：TikTok 全分类全地区 + Roblox 榜单 → 翻译 → 部署 → 通知
     python3 weekly_job.py monday     # 同 weekly（兼容旧的周一定时任务）
 """
 
@@ -19,7 +19,6 @@ import httpx
 from scraper import (
     API_TOKEN,
     scrape_categories,
-    scrape_douyin_categories,
     archive_to_data,
     download_covers,
     get_today_remaining,
@@ -32,10 +31,9 @@ from scraper import (
     download_roblox_icons,
 )
 
-# 每周一次跑完全部抓取；单次约 250 次调用，低于 DAILY_BUDGET。
+# 每周一次跑完全部抓取；单次约 140 次调用，低于 DAILY_BUDGET。
 SCHEDULE = {
     "tiktok": {"categories": None, "regions": None},
-    "douyin": {"categories": None, "regions": ["CN"], "platform": "douyin"},
 }
 COMMANDS = ("weekly", "monday")
 
@@ -69,7 +67,6 @@ def run_scrape(day: str):
     config = SCHEDULE[day]
     cats = config.get("categories")
     regions = config.get("regions")
-    platform = config.get("platform", "tiktok")
     monday = get_monday_date()
     label_parts = []
     if cats:
@@ -83,10 +80,7 @@ def run_scrape(day: str):
     # FETCH_ERRORS 是模块级列表，同一进程内多段抓取需各自清空，避免重复告警。
     FETCH_ERRORS.clear()
     try:
-        if platform == "douyin":
-            df = scrape_douyin_categories(videos_per_tag=20, categories=cats)
-        else:
-            df = scrape_categories(videos_per_tag=30, categories=cats, regions=regions)
+        df = scrape_categories(videos_per_tag=30, categories=cats, regions=regions)
     except PaymentRequiredError as e:
         print(f"  抓取中止: {e}")
         notify_alert(day, "TikHub 余额不足，抓取已中止", [str(e), "请到 https://user.tikhub.io/ 充值后重跑本周任务"])
@@ -223,9 +217,9 @@ def sync_main():
 
 CAT_NAMES = {
     "gaming": "游戏", "comedy": "搞笑", "entertainment": "娱乐",
-    "horror": "恐怖", "cute": "萌宠", "dance": "舞蹈", "food": "美食",
+    "horror": "恐怖", "cute": "萌宠", "dance": "舞蹈",
 }
-REGION_NAMES = {"ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡", "CN": "中国抖音"}
+REGION_NAMES = {"ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡"}
 FIELDS_TO_KEEP = ["d", "zh", "cat", "r", "p", "l", "cm", "sh", "h"]
 
 CAT_PROMPTS = {
@@ -251,10 +245,6 @@ CAT_PROMPTS = {
     ),
     "dance": (
         "聚焦挑战赛传播：当前流行什么舞蹈挑战和 viral 趋势。"
-    ),
-    "food": (
-        "聚焦美食领域跨界：当前什么美食内容最火，"
-        "微恐游戏可以如何跨界美食领域做创意传播。"
     ),
 }
 
@@ -402,7 +392,7 @@ def run_roblox(target_date: str):
 
 
 MIN_VIDEOS_FOR_INSIGHT = 5
-REGIONS_WITH_ALL = {"all": "全东南亚（印尼/泰国/菲律宾/马来西亚/新加坡）", "ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡", "global": "全球", "CN": "中国抖音"}
+REGIONS_WITH_ALL = {"all": "全东南亚（印尼/泰国/菲律宾/马来西亚/新加坡）", "ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡", "global": "全球"}
 
 
 def _top_sorted(records: list[dict], n: int) -> list[dict]:
