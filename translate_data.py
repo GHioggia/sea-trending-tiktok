@@ -34,13 +34,13 @@ def translate_batch(items: list[dict], client: anthropic.Anthropic) -> list[str]
     prompt = (
         "以下是东南亚 TikTok 视频的标题（印尼语/泰语/菲律宾语/英语混合）。"
         "请将每条翻译成简洁的中文，保留游戏名/人名等专有名词的常用译法，"
-        "去掉表情符号。按原编号逐行输出，每行格式为「编号. 译文」，不要解释。\n\n"
+        "去掉表情符号；长简介只概括要点，每条译文不超过 40 字。按原编号逐行输出，每行格式为「编号. 译文」，不要解释。\n\n"
         + "\n".join(lines)
     )
 
     msg = client.messages.create(
         model=os.environ.get("ANTHROPIC_MODEL", "glm-5.2"),
-        max_tokens=1024,
+        max_tokens=4096,  # 1024 会被长英文简介截断，导致后半批译文为空
         thinking={"type": "disabled"},
         messages=[{"role": "user", "content": prompt}],
     )

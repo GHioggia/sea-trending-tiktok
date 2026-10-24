@@ -12,3 +12,6 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Run logs (may contain proxy credentials)
+logs/

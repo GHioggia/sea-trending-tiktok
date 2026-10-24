@@ -1043,6 +1043,9 @@ def download_covers(combined_path: Path, max_width: int = 280, quality: int = 70
     combined_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
     print(f"  [封面] 完成: 成功 {success}, 失败 {failed}")
     return combined_path
+
+
+def save_results(df: pd.DataFrame, prefix: str = "data"):
     if df.empty:
         print("  没有数据可保存")
         return None
