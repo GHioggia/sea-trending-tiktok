@@ -382,8 +382,9 @@ def _classify_topics(country_name: str, topics: list[dict]) -> None:
 
 
 TOPIC_MERGE_PROMPT_TPL = """\
-以下是{country}本周 TikTok 热门话题候选，每行格式为「编号. #标签｜类别｜释义｜投稿数」。
+以下是{country}本周 TikTok 热门话题候选，每行格式为「编号. #标签｜类别｜释义｜投稿数｜共现标签(可能缺省)」。
 把实际指同一事件、同一活动或同一内容的标签合并为一组（包括变体拼写、带后缀的细分写法、同一节日/电影/赛事/当事人争议的不同标签）。
+释义有出入但代表视频共现标签大量重叠的，也应合并（释义可能不准，共现标签更可信）。
 主题相近但事件不同的不要合并。只输出包含 2 个及以上编号的组，每行格式：
 编号: 编号, 编号, ...
 每组第一个编号为代表标签（选最通用、拼写最简洁或热度最高的那个），其余为变体。
@@ -406,11 +407,12 @@ def _topic_sort_key(t: dict):
     return (t["attention"] != "高", t["trend"] == "", t["rank"] or 999)
 
 
-def _merge_topic_variants(country_name: str, topics: list[dict]) -> list[list[dict]]:
-    """大模型把同一事件/活动的变体标签归并成组，组内第 1 个为代表话题"""
+def _merge_topic_variants(country_name: str, topics: list[dict], extras: dict | None = None) -> list[list[dict]]:
+    """大模型把同一事件/活动的变体标签归并成组，组内第 1 个为代表话题；extras 为 tag→共现标签提示"""
     if len(topics) < 2:
         return [[t] for t in topics]
     lines = [f"{i}. #{t['tag']}｜{t.get('type', '')}｜{t.get('zh', '')}｜投稿{t.get('posts', 0)}"
+             + (f"｜共现标签 {extras[t['tag']]}" if extras and extras.get(t["tag"]) else "")
              for i, t in enumerate(topics, 1)]
     try:
         text = _llm_call(TOPIC_MERGE_PROMPT_TPL.format(country=country_name, lines="\n".join(lines)), max_tokens=600)
@@ -457,6 +459,39 @@ def _refine_topic_meanings(country_name: str, picked: list[dict], rec_by_id: dic
                 todo[int(m.group(1)) - 1].update({"type": typ, "zh": zh})
 
 
+def _topic_hashtag_summary(videos: list, rec_by_id: dict, limit: int = 8) -> str:
+    """话题代表视频里出现次数最多的共现标签（同事件话题的标签会互相出现在对方视频里）"""
+    from collections import Counter
+    c = Counter()
+    for v in videos:
+        for tag in ((rec_by_id.get(v) or {}).get("h") or "").split(","):
+            if tag.strip():
+                c[tag.strip()] += 1
+    return " ".join(f"#{t}" for t, _ in c.most_common(limit))
+
+
+def _remerge_after_refine(country_name: str, picked: list[dict], rec_by_id: dict) -> None:
+    """复核释义后二次归并：释义仍互相看不懂的关联话题，用视频共现标签兜底合并"""
+    if len(picked) < 2:
+        return
+    extras = {t["tag"]: _topic_hashtag_summary(t.get("videos", []), rec_by_id) for t in picked}
+    merged_heads = []
+    for g in _merge_topic_variants(country_name, picked, extras):
+        if len(g) < 2:
+            continue
+        head = g[0]
+        head["merged"] = list(dict.fromkeys((head.get("merged") or []) + [m["tag"] for m in g[1:]]))
+        ids = list(head.get("videos", []))
+        for m in g[1:]:
+            m["picked"] = False
+            m["merged_into"] = head["tag"]
+            ids += [v for v in m.get("videos", []) if v not in ids]
+        head["videos"] = ids
+        merged_heads.append(head)
+    if merged_heads:
+        _refine_topic_meanings(country_name, merged_heads, rec_by_id)  # 用并集素材重新校正合并卡释义
+
+
 def run_topics(target_date: str):
     """各国热门话题榜 → AI 分类筛选 → 变体归并 → 搜索代表视频 → 视频标题复核释义 → topics.json + topic_videos.json"""
     print(f"\n[话题] 发现本周新话题 → {target_date}")
@@ -499,7 +534,9 @@ def run_topics(target_date: str):
                     for mt in t.get("merged", []):
                         ids += [vid for vid in by_topic.get((country, mt), []) if vid not in ids]
                     t["videos"] = ids
-            _refine_topic_meanings(TOPIC_COUNTRIES[country], [t for t in topics if t.get("picked")], rec_by_id)
+            picked_list = [t for t in topics if t.get("picked")]
+            _refine_topic_meanings(TOPIC_COUNTRIES[country], picked_list, rec_by_id)
+            _remerge_after_refine(TOPIC_COUNTRIES[country], picked_list, rec_by_id)
         out = {"date": target_date, "fetched_at": datetime.now().isoformat(timespec="seconds"),
                "countries": TOPIC_COUNTRIES, "topics": trending}
         out_path = DATA_DIR / target_date / "topics.json"
