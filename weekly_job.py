@@ -381,8 +381,84 @@ def _classify_topics(country_name: str, topics: list[dict]) -> None:
                 pending[int(m.group(1)) - 1].update({"type": m.group(2).strip(), "zh": m.group(3).strip(), "attention": m.group(4)})
 
 
+TOPIC_MERGE_PROMPT_TPL = """\
+以下是{country}本周 TikTok 热门话题候选，每行格式为「编号. #标签｜类别｜释义｜投稿数」。
+把实际指同一事件、同一活动或同一内容的标签合并为一组（包括变体拼写、带后缀的细分写法、同一节日/电影/赛事/当事人争议的不同标签）。
+主题相近但事件不同的不要合并。只输出包含 2 个及以上编号的组，每行格式：
+编号: 编号, 编号, ...
+每组第一个编号为代表标签（选最通用、拼写最简洁或热度最高的那个），其余为变体。
+按原编号输出，不要解释，不要输出其他内容。
+
+{lines}"""
+
+TOPIC_REFINE_PROMPT_TPL = """\
+以下是{country}本周入选的 TikTok 话题及其近 7 天代表视频标题。
+话题榜标签常因真实时事（新闻、娱乐圈争议、社会事件）上榜，标签的字面词义往往不可靠，必须以代表视频标题为主要依据判断话题实际是什么。
+对每个话题输出一行，格式「编号. 类别｜中文释义」：
+- 类别：从 {types} 中选一个，纠正原有错误分类；时事争议/社会新闻选 新闻时事，当事人是网红/明星选 明星网红
+- 中文释义：15-30 字，说明它实际是什么、为什么火；依据不足时写「含义不明」，不要编造
+按原编号逐行输出，不要解释，不要输出其他内容。
+
+{blocks}"""
+
+
+def _topic_sort_key(t: dict):
+    return (t["attention"] != "高", t["trend"] == "", t["rank"] or 999)
+
+
+def _merge_topic_variants(country_name: str, topics: list[dict]) -> list[list[dict]]:
+    """大模型把同一事件/活动的变体标签归并成组，组内第 1 个为代表话题"""
+    if len(topics) < 2:
+        return [[t] for t in topics]
+    lines = [f"{i}. #{t['tag']}｜{t.get('type', '')}｜{t.get('zh', '')}｜投稿{t.get('posts', 0)}"
+             for i, t in enumerate(topics, 1)]
+    try:
+        text = _llm_call(TOPIC_MERGE_PROMPT_TPL.format(country=country_name, lines="\n".join(lines)), max_tokens=600)
+    except Exception as e:
+        print(f"  [话题] {country_name} 变体归并失败: {e}")
+        return [[t] for t in topics]
+    used, groups = set(), []
+    for line in text.splitlines():
+        m = re.match(r"\s*(\d+)\s*[:：]\s*((?:\d+\s*[,,、]\s*)*\d+)", line)
+        if not m:
+            continue
+        idxs = [int(m.group(1))] + [int(x) for x in re.findall(r"\d+", m.group(2))]
+        idxs = [i for i in dict.fromkeys(idxs) if 1 <= i <= len(topics) and i not in used]
+        if len(idxs) >= 2:
+            used.update(idxs)
+            groups.append([topics[i - 1] for i in idxs])
+    return groups + [[t] for i, t in enumerate(topics, 1) if i not in used]
+
+
+def _refine_topic_meanings(country_name: str, picked: list[dict], rec_by_id: dict) -> None:
+    """用代表视频标题复核并修正话题的类别与中文释义（字面翻译不可靠，时事类话题尤其容易错）"""
+    todo = [t for t in picked if t.get("videos") and any(rec_by_id.get(v) for v in t["videos"])]
+    if not todo:
+        return
+    blocks = []
+    for i, t in enumerate(todo, 1):
+        vids = sorted((rec_by_id[v] for v in t["videos"] if rec_by_id.get(v)),
+                      key=lambda r: -(r.get("p") or 0))[:5]
+        titles = "\n".join(
+            f'  - "{(v.get("d") or "").strip()[:100]}"' + (f'（中译：{v["zh"].strip()[:60]}）' if v.get("zh") else "")
+            for v in vids)
+        blocks.append(f'{i}. #{t["tag"]}（原分类：{t.get("type", "")}｜{t.get("zh", "")}）\n{titles}')
+    try:
+        text = _llm_call(TOPIC_REFINE_PROMPT_TPL.format(
+            country=country_name, types="/".join(TOPIC_TYPES), blocks="\n\n".join(blocks)), max_tokens=1200)
+    except Exception as e:
+        print(f"  [话题] {country_name} 释义复核失败: {e}")
+        return
+    for line in text.splitlines():
+        m = re.match(r"\s*(\d+)[.、]\s*(.+?)\s*[｜|]\s*(.+)", line)
+        if m and 1 <= int(m.group(1)) <= len(todo):
+            typ, zh = m.group(2).strip(), m.group(3).strip()
+            if typ in TOPIC_TYPES and zh:
+                todo[int(m.group(1)) - 1].update({"type": typ, "zh": zh})
+
+
 def run_topics(target_date: str):
-    """各国热门话题榜 → AI 分类筛选 → 搜索代表视频 → data/<date>/topics.json + topic_videos.json"""
+    """各国热门话题榜 → AI 分类筛选 → 变体归并 → 搜索代表视频 → 视频标题复核释义 → topics.json + topic_videos.json"""
     print(f"\n[话题] 发现本周新话题 → {target_date}")
     FETCH_ERRORS.clear()
     try:
@@ -395,24 +471,35 @@ def run_topics(target_date: str):
             # 关注度高直接入选；关注度中须是本周新冒出或上升中，排除常年泛话题
             kept = [t for t in topics if t.get("type") not in TOPIC_EXCLUDE_TYPES
                     and (t.get("attention") == "高" or (t.get("attention") == "中" and t["trend"]))]
-            kept.sort(key=lambda t: (t["attention"] != "高", t["trend"] == "", t["rank"] or 999))
-            for t in kept[:TOPICS_PER_COUNTRY]:
-                t["picked"] = True
-                picks.append((country, t["tag"]))
+            # 入选名额前先归并同一事件的变体标签，一个事件只占一个名额
+            clusters = _merge_topic_variants(TOPIC_COUNTRIES[country], kept)
+            clusters.sort(key=lambda g: min(_topic_sort_key(m) for m in g))
+            for g in clusters[:TOPICS_PER_COUNTRY]:
+                head = g[0]
+                head["picked"] = True
+                if len(g) > 1:
+                    head["merged"] = [m["tag"] for m in g[1:]]
+                picks.append((country, head["tag"]))
         df = fetch_topic_videos(picks)
         videos_path = archive_topic_videos(df, target_date)
         if not df.empty:
             download_covers(videos_path)
             from translate_data import translate_file
             translate_file(videos_path)
+        records = json.loads(videos_path.read_text(encoding="utf-8"))
         by_topic = {}
-        for v in json.loads(videos_path.read_text(encoding="utf-8")):
+        for v in records:
             for src in v.get("srcs") or []:
                 by_topic.setdefault((src.get("query_region"), src.get("tag")), []).append(v["id"])
+        rec_by_id = {v["id"]: v for v in records}
         for country, topics in trending.items():
             for t in topics:
                 if t.get("picked"):
-                    t["videos"] = by_topic.get((country, t["tag"]), [])
+                    ids = list(by_topic.get((country, t["tag"]), []))
+                    for mt in t.get("merged", []):
+                        ids += [vid for vid in by_topic.get((country, mt), []) if vid not in ids]
+                    t["videos"] = ids
+            _refine_topic_meanings(TOPIC_COUNTRIES[country], [t for t in topics if t.get("picked")], rec_by_id)
         out = {"date": target_date, "fetched_at": datetime.now().isoformat(timespec="seconds"),
                "countries": TOPIC_COUNTRIES, "topics": trending}
         out_path = DATA_DIR / target_date / "topics.json"
@@ -465,23 +552,35 @@ def _generate_roblox_intros(games: dict) -> None:
 
 
 def run_roblox(target_date: str):
-    """抓取 Roblox 各国榜单 → 中文介绍 → 归档 data/<date>/roblox.json（不消耗 TikHub 额度）"""
+    """抓取 Roblox 各国榜单，榜单到手即落盘；图标/中文介绍失败只降级，不丢数据（不消耗 TikHub 额度）"""
     print(f"\n[Roblox] 抓取榜单 → {target_date}")
     try:
         roblox = fetch_roblox_charts()
-        out_dir = DATA_DIR / target_date
-        download_roblox_icons(roblox, out_dir)
-        _generate_roblox_intros(roblox["games"])
-        for g in roblox["games"].values():
-            g.pop("desc", None)
-            g.pop("icon_url", None)
-        roblox.update({"date": target_date, "fetched_at": datetime.now().isoformat(timespec="seconds")})
-        out_path = out_dir / "roblox.json"
-        out_path.write_text(json.dumps(roblox, ensure_ascii=False), encoding="utf-8")
-        print(f"  [Roblox] 已归档 → {out_path}")
     except Exception as e:
         print(f"  [Roblox] 失败（不影响 TikTok 数据）: {e}")
         notify_alert("weekly", "Roblox 榜单抓取失败", [f"{type(e).__name__}: {e}"])
+        return
+
+    out_dir = DATA_DIR / target_date
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "roblox.json"
+
+    def _save():
+        slim = dict(roblox)
+        slim["games"] = {uid: {k: v for k, v in g.items() if k not in ("desc", "icon_url")}
+                         for uid, g in roblox["games"].items()}
+        slim.update({"date": target_date, "fetched_at": datetime.now().isoformat(timespec="seconds")})
+        out_path.write_text(json.dumps(slim, ensure_ascii=False), encoding="utf-8")
+
+    _save()  # 榜单先落盘，后续步骤再失败也不丢数据
+    for label, step in (("图标下载", lambda: download_roblox_icons(roblox, out_dir)),
+                        ("中文介绍", lambda: _generate_roblox_intros(roblox["games"]))):
+        try:
+            step()
+        except Exception as e:
+            print(f"  [Roblox] {label}失败（保留已有数据）: {type(e).__name__}: {e}")
+    _save()
+    print(f"  [Roblox] 已归档 → {out_path}")
 
 
 MIN_VIDEOS_FOR_INSIGHT = 5

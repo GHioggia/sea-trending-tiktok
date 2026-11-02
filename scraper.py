@@ -982,9 +982,14 @@ def fetch_roblox_charts() -> dict:
                 print(f"  [Roblox] {sort_name} / {country_name}: {len(ranked)} 款")
 
         uids = list(games)
+        # 详情/缩略图接口偶发 4xx/5xx：单个批次失败只跳过该批，不得拖垮整轮榜单抓取
         for i in range(0, len(uids), 50):
             batch = uids[i:i + 50]
-            data = _roblox_get(client, "https://games.roblox.com/v1/games", {"universeIds": ",".join(batch)})
+            try:
+                data = _roblox_get(client, "https://games.roblox.com/v1/games", {"universeIds": ",".join(batch)})
+            except Exception as e:
+                print(f"  [Roblox] 游戏详情批次失败（跳过 {len(batch)} 款）: {e}")
+                continue
             for d in data.get("data", []):
                 g = games.get(str(d.get("id")))
                 if g is None:
@@ -1000,9 +1005,13 @@ def fetch_roblox_charts() -> dict:
                 })
         for i in range(0, len(uids), 100):
             batch = uids[i:i + 100]
-            data = _roblox_get(client, "https://thumbnails.roblox.com/v1/games/icons", {
-                "universeIds": ",".join(batch), "size": "150x150", "format": "Png", "isCircular": "false",
-            })
+            try:
+                data = _roblox_get(client, "https://thumbnails.roblox.com/v1/games/icons", {
+                    "universeIds": ",".join(batch), "size": "150x150", "format": "Png", "isCircular": "false",
+                })
+            except Exception as e:
+                print(f"  [Roblox] 图标地址批次失败（跳过 {len(batch)} 款）: {e}")
+                continue
             for d in data.get("data", []):
                 g = games.get(str(d.get("targetId")))
                 if g is not None and d.get("state") == "Completed":
