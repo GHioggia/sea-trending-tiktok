@@ -305,7 +305,7 @@ def _slim(records: list[dict]) -> str:
     return json.dumps(slim, ensure_ascii=False, indent=1)
 
 
-def _llm_call(prompt: str, max_tokens: int = 1024) -> str:
+def _llm_call(prompt: str, max_tokens: int = 1024, model: str | None = None) -> str:
     import time
     import anthropic
     kwargs = {}
@@ -320,7 +320,7 @@ def _llm_call(prompt: str, max_tokens: int = 1024) -> str:
     for attempt in range(5):
         try:
             msg = client.messages.create(
-                model=os.environ.get("ANTHROPIC_MODEL", "glm-5.2"),
+                model=model or os.environ.get("ANTHROPIC_MODEL", "glm-5.2"),
                 max_tokens=max_tokens,
                 thinking={"type": "disabled"},
                 messages=[{"role": "user", "content": prompt}],
@@ -621,6 +621,9 @@ def run_roblox(target_date: str):
 
 
 MIN_VIDEOS_FOR_INSIGHT = 5
+# 洞察取样口径：每区 top N。钉钉引用池必须用同样的口径，否则正文提到的视频不在清单里，模型只能瞎选。
+INSIGHT_SAMPLE_PER_REGION = 7       # 分类洞察
+INSIGHT_ALL_SAMPLE_PER_REGION = 10  # 整体洞察
 REGIONS_WITH_ALL = {"all": "全东南亚（印尼/泰国/菲律宾/马来西亚/新加坡）", "ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡", "global": "全球"}
 
 
@@ -650,7 +653,7 @@ def generate_insights(records: list[dict], target_date: str) -> dict:
             if len(cat_records) < MIN_VIDEOS_FOR_INSIGHT:
                 continue
             if region_id == "all":
-                sample = _top_by_region(cat_records, 7)
+                sample = _top_by_region(cat_records, INSIGHT_SAMPLE_PER_REGION)
             else:
                 sample = _top_sorted(cat_records, 20)
             prompt = CATEGORY_PROMPT_TPL.format(
@@ -668,7 +671,7 @@ def generate_insights(records: list[dict], target_date: str) -> dict:
 
         # All Tags 整体洞察
         if region_id == "all":
-            sample = _top_by_region(pool, 10)
+            sample = _top_by_region(pool, INSIGHT_ALL_SAMPLE_PER_REGION)
         else:
             sample = _top_sorted(pool, 30)
         try:
@@ -701,6 +704,10 @@ def generate_insights(records: list[dict], target_date: str) -> dict:
     return insights
 
 
+# 钉钉文案单独指定模型：ANTHROPIC_MODEL（claude-opus-5-5）近期频繁 429，
+# 一旦重试耗尽就降级成 summary 纯文本，分要点视频链接会整段丢失。
+DINGTALK_MODEL = os.getenv("DINGTALK_MODEL", "qwen3.8-max")
+
 DINGTALK_PROMPT_TPL = """\
 你是微恐游戏团队的东南亚 TikTok 趋势分析师，需要撰写钉钉群周报推送的正文部分。
 
@@ -708,13 +715,15 @@ DINGTALK_PROMPT_TPL = """\
 绝对不要在开头重复写标题、日期、数据概览等信息，直接从洞察内容开始。
 
 严格要求：
-- 总字数 500-600 字，绝对不能超过 600 字，钉钉会截断
+- 正文字数 500-600 字（不含 LINKS 引用行），绝对不能超过 600 字，钉钉会截断
 - 每个要点的第一句是总结性结论，用 <font color="#FF6600">**总结句**</font> 高亮，后面的数据佐证用普通文字
 - 分「恐怖内容灵感」和「传播策略参考」两个板块，用 ### 【板块名】 作为标题（如 ### 【恐怖内容灵感】）
 - 每个板块各写 2 个要点，共 4 个要点
 - 每个要点开头用不同的 emoji 做视觉分隔（如 👻 🎮 🔥 💡）
 - 每个要点 1-2 句话，必须附具体数据（播放/分享数）
-- 最后一行写行动建议，只输出建议内容本身，不要加前缀标题，系统会自动加格式
+- 每个要点写完后另起一行输出引用标记，格式固定为 `LINKS: 编号1,编号2`，编号取自下方「可引用视频清单」，系统会自动替换成视频链接
+- 引用标记里只能写编号，绝对不要自己编造或书写视频链接、视频 ID；同一编号不要在多个要点里重复使用
+- 最后一行写行动建议，只输出建议内容本身，不要加前缀标题，系统会自动加格式；行动建议之后不要再写 LINKS
 
 以下是各分类的洞察数据供你参考：
 
@@ -722,7 +731,77 @@ DINGTALK_PROMPT_TPL = """\
 {cat_insights}
 
 整体洞察：
-{all_insight}"""
+{all_insight}
+
+可引用视频清单（编号 | 分类 | 地区 | 标题 | 分享/播放）：
+{video_list}"""
+
+
+LINK_REF_RE = re.compile(r"LINKS?\s*[:：]\s*(?:编号\s*)?\d{1,3}(?:[\s,，、]*(?:编号\s*)?\d{1,3})*", re.IGNORECASE)
+MAX_LINKS_PER_POINT = 2
+
+
+def _link_label(rec: dict, width: int = 22) -> str:
+    """链接文字：地区 + 标题（优先中文翻译），去掉会破坏 markdown 或白占长度的字符"""
+    raw = (rec.get("zh") or rec.get("d") or "").strip()
+    text = re.sub(r"[#＃]\S+", "", re.sub(r"[\[\](){}\n\r]+", " ", raw)).strip()
+    # 纯标签标题剥离后为空，退回作者名，别把一串 # 塞进链接文字
+    text = text or (rec.get("au") or rec.get("an") or "视频").strip()
+    if len(text) > width:
+        text = text[:width] + "…"
+    region = REGION_NAMES.get(rec.get("r"), rec.get("r") or "")
+    return f"{region}·{text}" if region else text
+
+
+def _link_candidates(records: list[dict]) -> dict[int, dict]:
+    """钉钉文案的可引用视频池：与 insights["all"] 的取样完全同源（分类 + 整体两份样本去重合并），
+    保证洞察正文提到的任何视频都在清单里。分地区洞察不参与钉钉推送，故不纳入。"""
+    pool = [r for r in records
+            if r.get("r") not in ("CN",) and r.get("cat") != "global_trending" and r.get("url")]
+    cands: dict[int, dict] = {}
+    seen = set()
+
+    def add(sample: list[dict]):
+        for rec in sample:
+            vid = rec.get("id")
+            if vid and vid not in seen:
+                seen.add(vid)
+                cands[len(cands) + 1] = rec
+
+    for cat in CAT_NAMES:
+        add(_top_by_region([r for r in pool if r.get("cat") == cat], INSIGHT_SAMPLE_PER_REGION))
+    add(_top_by_region(pool, INSIGHT_ALL_SAMPLE_PER_REGION))
+    return cands
+
+
+def _video_list_text(cands: dict[int, dict]) -> str:
+    return "\n".join(
+        f"{i} | {CAT_NAMES.get(r.get('cat'), r.get('cat'))} | {REGION_NAMES.get(r.get('r'), r.get('r'))} | "
+        f"{_link_label(r, 30)} | sh {r.get('sh', 0) or 0} / p {r.get('p', 0) or 0}"
+        for i, r in cands.items()
+    )
+
+
+def _render_links(body: str, cands: dict[int, dict]) -> str:
+    """把 LLM 输出的 `LINKS: 3,7` 标记换成真实视频链接，编号无效时静默丢弃"""
+    def repl(m: re.Match) -> str:
+        picked = []
+        for num in re.findall(r"\d{1,3}", m.group(0)):
+            idx = int(num)
+            if idx in cands and idx not in picked:
+                picked.append(idx)
+            if len(picked) >= MAX_LINKS_PER_POINT:
+                break
+        if not picked:
+            return ""
+        return "🔗 " + " ｜ ".join(
+            f"[{_link_label(cands[i])}]({cands[i]['url']})" for i in picked
+        )
+
+    out = LINK_REF_RE.sub(repl, body)
+    # 模型写歪的标记（编号缺失/越界到无法匹配）整段清掉，别让 "LINKS:" 字样出现在群里
+    out = re.sub(r"LINKS?\s*[:：][^\n]*", "", out, flags=re.IGNORECASE)
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
 
 
 def _load_dingtalk_bots() -> list[dict]:
@@ -759,33 +838,42 @@ def notify_dingtalk(monday_date: str, records: list[dict], insights: dict):
         if k != "all" and v
     )
 
+    cands = _link_candidates(records)
+
     print("\n[通知] 调用 LLM 生成钉钉推送文案...")
     try:
         body = _llm_call(DINGTALK_PROMPT_TPL.format(
             cat_insights=cat_insights,
             all_insight=all_insights.get("all", ""),
-        ), max_tokens=2048)
+            video_list=_video_list_text(cands),
+        ), max_tokens=2048, model=DINGTALK_MODEL)
     except Exception as e:
         print(f"  文案生成失败: {e}")
         body = insights.get("summary", "本周洞察已生成，请查看完整报告。")
 
-    # 拆分正文和行动建议（LLM 输出的最后一行）
+    body = _render_links(body, cands)
+
+    # 拆分正文和行动建议（LLM 输出的最后一行；链接行不算建议）
     lines = body.strip().split("\n")
-    action_line = lines[-1].strip() if lines else ""
-    for prefix in ["💡", "行动建议：", "行动建议:", "**行动建议**：", "**行动建议**:"]:
-        action_line = action_line.lstrip(prefix).strip()
-    main_body = "\n".join(lines[:-1]).strip() if len(lines) > 1 else body
+    action_line = ""
+    last = lines[-1].strip() if lines else ""
+    if last and not last.startswith("🔗"):
+        action_line = last
+        for prefix in ["💡", "行动建议：", "行动建议:", "**行动建议**：", "**行动建议**:"]:
+            action_line = action_line.lstrip(prefix).strip()
+        lines = lines[:-1]
+    main_body = "\n".join(lines).strip() if lines else body
     while main_body.endswith("---"):
         main_body = main_body[:-3].strip()
 
+    action_block = f"📌 **本周行动建议**：{action_line}\n\n---\n\n" if action_line else ""
     text = (
         f"## 📊 东南亚 TikTok 周报 · {monday_date}\n\n"
         f"本周监测：**{total}** 条视频 | {region_stats}\n\n"
         f"---\n\n"
         f"{main_body}\n\n"
         f"---\n\n"
-        f"📌 **本周行动建议**：{action_line}\n\n"
-        f"---\n\n"
+        f"{action_block}"
         f"📊 [【传送门·需魔法】本周TikTok热点视频>>>]({PAGES_URL})"
     )
     payload = {
