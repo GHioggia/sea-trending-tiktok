@@ -55,13 +55,18 @@ cp .env.example .env      # 填入 TIKHUB_API_TOKEN
 |---|---|---|
 | `TIKHUB_API_TOKEN` | TikHub API 鉴权 | 是 |
 | `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` | LLM 网关地址与 Bearer 凭据；留空则走官方 API + `ANTHROPIC_API_KEY` | 否 |
-| `ANTHROPIC_MODEL` | 洞察/翻译/话题分类/Roblox 介绍用的模型（代码默认 `glm-5.2`） | 否 |
+| `ANTHROPIC_MODEL` | 洞察/翻译/话题分类/Roblox 介绍用的模型（代码默认 `glm-5.2`）。**定时任务里由 `run_weekly.sh` 强制导出为 `qwen3.7-max`**，见下方说明 | 否 |
+| `WEEKLY_LLM_MODEL` | 覆盖每周流程的模型，只在 `run_weekly.sh` 里生效，如 `WEEKLY_LLM_MODEL=glm-5.2 bash run_weekly.sh` | 否 |
 | `DINGTALK_MODEL` | 钉钉周报文案专用模型，默认 `qwen3.8-max` | 否 |
 | `PAGES_URL` | 站点地址，用作钉钉消息里的传送门 | 否 |
 | `GITHUB_REPO` / `GIT_PUSH_PROXY` | 部署推送目标与 push 代理 | 否 |
 | `COVER_PROXY` | 封面（TikTok CDN）与 Roblox 图标（rbxcdn）下载代理 | 否 |
 | `ROBLOX_PROXY` | Roblox explore-api 代理，留空则用 `CLAUDE_WEB_PROXY` | 否 |
 | `SSL_CERT_FILE` | 企业网络中间人证书路径 | 否 |
+
+**为什么模型写在 `run_weekly.sh` 而不是 `.env`**：定时任务的会话环境本身已注入 `ANTHROPIC_MODEL`，而 `scraper._load_dotenv` 只在变量不存在时才写入（`if key not in os.environ`），所以在 `.env` 里改模型对定时任务无效。`run_weekly.sh` 用 `export ANTHROPIC_MODEL="${WEEKLY_LLM_MODEL:-qwen3.7-max}"` 显式覆盖，`weekly_job.py` 与 `translate_data.py` 都会读到它。手动前台跑 `python3 weekly_job.py weekly` 时没有这层导出，用的是会话/`.env` 的值。
+
+钉钉文案是唯一例外：它走 `DINGTALK_MODEL`（默认 `qwen3.8-max`），因为 `claude-opus-5-5` 频繁 429，重试耗尽后会降级成无链接的纯摘要。
 
 ### 钉钉机器人（可选）
 
