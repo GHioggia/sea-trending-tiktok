@@ -38,7 +38,7 @@ python3 -m http.server 8090
 1. **分类标签抓取**（`scrape_categories`）：6 分类（游戏/搞笑/娱乐/恐怖/萌宠/舞蹈）× ID/TH/PH/MY/SG/global 的本地化标签，约 140 次调用
 2. **新话题发现**（`run_topics`）：各国近 7 天热门话题榜 → 大模型分类筛选 → 同一事件变体标签归并（每组只搜一次） → 关键词搜索近 7 天代表视频 → 用代表视频标题复核类别与释义（话题多因时事上榜，字面翻译不可靠），复核后再按话题共现标签二次归并并对合并卡重校释义，约 35–45 次调用
 3. **Roblox 榜单**（`run_roblox`）：各国热门趋势/新晋上升榜 + 中文介绍，不消耗 TikHub 额度；榜单抓到即先落盘，图标/介绍失败只降级不丢数据
-4. 翻译、生成 `insights.json`、部署 gh-pages（`deploy_pages`）、bot 提交并推送 main（`sync_main`）、钉钉通知（每期只发一次，`.notified` 防重复）
+4. 翻译、生成 `insights.json`、部署 gh-pages（`deploy_pages`）、bot 提交并推送 main（`sync_main`）、钉钉通知（每期只发一次，`.notified` 防重复；实际推送的正文留档到 `data/<date>/dingtalk.md`，因在 `sync_main` 之后写入，由下一周的提交带入库）
 
 **数据流：**
 1. 通过 `TIKHUB_API_TOKEN` 调用 TikHub API（`https://api.tikhub.io`），`api_get` / `api_post` 统一处理缓存与预算
@@ -76,6 +76,7 @@ data/
     topics.json           # 各国热门话题榜 + 分类结果（picked=入选）
     topic_videos.json     # 入选话题的代表视频（结构同 combined.json）
     roblox.json           # Roblox 各国榜单、游戏详情与中文介绍
+    dingtalk.md           # 当期实际推送的钉钉正文留档（发送时间/文案来源/各机器人结果）
     roblox/               # Roblox 游戏图标
     covers/               # 视频封面 WebP 缩略图
     .notified             # 钉钉通知已发送标记

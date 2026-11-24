@@ -120,6 +120,7 @@ data/
     topics.json           各国热门话题榜 + 分类结果（picked=入选）
     topic_videos.json     入选话题的代表视频（结构同 combined.json）
     roblox.json           Roblox 各国榜单、游戏详情与中文介绍
+    dingtalk.md           当期实际推送的钉钉正文留档（含发送时间、文案来源、各机器人结果）
     covers/               视频封面 WebP 缩略图
     roblox/               Roblox 游戏图标
     .notified             钉钉通知已发送标记

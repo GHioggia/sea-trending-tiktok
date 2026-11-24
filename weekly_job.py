@@ -847,9 +847,11 @@ def notify_dingtalk(monday_date: str, records: list[dict], insights: dict):
             all_insight=all_insights.get("all", ""),
             video_list=_video_list_text(cands),
         ), max_tokens=2048, model=DINGTALK_MODEL)
+        source = f"LLM 生成（{DINGTALK_MODEL}）"
     except Exception as e:
         print(f"  文案生成失败: {e}")
         body = insights.get("summary", "本周洞察已生成，请查看完整报告。")
+        source = f"降级为 insights.summary（文案生成失败：{type(e).__name__}）"
 
     body = _render_links(body, cands)
 
@@ -882,25 +884,48 @@ def notify_dingtalk(monday_date: str, records: list[dict], insights: dict):
     }
 
     print(f"\n[通知] 发送钉钉消息到 {len(bots)} 个机器人...")
-    _send_to_bots(bots, payload)
+    results = _send_to_bots(bots, payload)
+    _archive_dingtalk_text(monday_date, text, results, source)
 
 
-def _send_to_bots(bots: list[dict], payload: dict):
+def _archive_dingtalk_text(monday_date: str, text: str, results: list[str], source: str):
+    """把实际推送的钉钉正文留档，便于回看历史周报（钉钉消息本身无法检索）"""
+    out_path = DATA_DIR / monday_date / "dingtalk.md"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    header = (
+        f"# 钉钉周报留档 · {monday_date}\n\n"
+        f"- 发送时间：{datetime.now().isoformat(timespec='seconds')}\n"
+        f"- 文案来源：{source}\n"
+        f"- 推送结果：{' / '.join(results) if results else '无'}\n\n"
+        f"以下为实际发送的 markdown 正文：\n\n"
+        f"---\n\n"
+    )
+    out_path.write_text(header + text + "\n", encoding="utf-8")
+    print(f"  [通知] 正文已留档 → {out_path}")
+
+
+def _send_to_bots(bots: list[dict], payload: dict) -> list[str]:
+    results = []
     for bot in bots:
         name = bot.get("name", "未命名")
         webhook = bot.get("webhook", "")
         if not webhook:
             print(f"  [{name}] 跳过：无 webhook")
+            results.append(f"{name} ⏭️ 无 webhook")
             continue
         try:
             resp = httpx.post(webhook, json=payload, timeout=10, verify=SSL_CA_CERT or True)
             data = resp.json()
             if data.get("errcode") == 0:
                 print(f"  [{name}] 发送成功")
+                results.append(f"{name} ✅")
             else:
                 print(f"  [{name}] 失败: {data}")
+                results.append(f"{name} ❌ errcode={data.get('errcode')}")
         except Exception as e:
             print(f"  [{name}] 异常: {e}")
+            results.append(f"{name} ❌ {type(e).__name__}")
+    return results
 
 
 def notify_alert(day: str, title: str, details: list[str]):
