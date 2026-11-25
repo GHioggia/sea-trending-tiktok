@@ -2,6 +2,9 @@
 .env
 dingtalk_bots.json
 
+# 本地会话授权项，由 harness 自动追加，可能内嵌内网地址
+.claude/settings.local.json
+
 # Cache (regenerable)
 cache/
 __pycache__/

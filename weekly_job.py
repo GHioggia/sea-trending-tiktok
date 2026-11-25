@@ -43,7 +43,7 @@ COMMANDS = ("weekly", "monday")
 DINGTALK_BOTS_FILE = Path("dingtalk_bots.json")
 PAGES_URL = os.getenv("PAGES_URL", "https://ghioggia.github.io/sea-trending-tiktok")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "https://github.com/GHioggia/sea-trending-tiktok.git")
-GIT_PUSH_PROXY = os.getenv("GIT_PUSH_PROXY", "http://pubproxy.ejoy.com:23188")
+GIT_PUSH_PROXY = os.getenv("GIT_PUSH_PROXY", "")  # 留空则直连；内网代理地址只放在 .env，不入库
 SSL_CA_CERT = os.getenv("SSL_CERT_FILE") or (
     "/opt/opensandbox/mitmproxy-ca-cert.pem"
     if Path("/opt/opensandbox/mitmproxy-ca-cert.pem").exists()
@@ -216,6 +216,10 @@ def sync_main():
         print(f"  main 推送失败: {push_result.stderr}")
     else:
         print("  main 推送成功")
+        # 推送是按 URL 直推的，不会更新 origin 的 tracking ref，本地会永远显示 ahead。
+        # 补一次 fetch（origin 是实时只读代理）；失败不影响流程。
+        subprocess.run(["git", "fetch", "--quiet", "origin", "main"],
+                       capture_output=True, text=True, cwd=str(ROOT))
 
 
 CAT_NAMES = {
