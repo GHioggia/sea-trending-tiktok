@@ -55,18 +55,17 @@ cp .env.example .env      # 填入 TIKHUB_API_TOKEN
 |---|---|---|
 | `TIKHUB_API_TOKEN` | TikHub API 鉴权 | 是 |
 | `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` | LLM 网关地址与 Bearer 凭据；留空则走官方 API + `ANTHROPIC_API_KEY` | 否 |
-| `ANTHROPIC_MODEL` | 洞察/翻译/话题分类/Roblox 介绍用的模型（代码默认 `glm-5.2`）。**定时任务里由 `run_weekly.sh` 强制导出为 `qwen3.7-max`**，见下方说明 | 否 |
-| `WEEKLY_LLM_MODEL` | 覆盖每周流程的模型，只在 `run_weekly.sh` 里生效，如 `WEEKLY_LLM_MODEL=glm-5.2 bash run_weekly.sh` | 否 |
-| `DINGTALK_MODEL` | 钉钉周报文案专用模型，默认 `qwen3.8-max` | 否 |
+| `LLM_MODELS` | 流水线模型链（逗号分隔，按序 fallback），默认 `qwen3.8-max,glm-5.3,qwen3.7-max`，见下方说明 | 否 |
+| `DINGTALK_MODEL` | 把钉钉文案钉死在单个模型上；默认空 = 走模型链 | 否 |
 | `PAGES_URL` | 站点地址，用作钉钉消息里的传送门 | 否 |
 | `GITHUB_REPO` / `GIT_PUSH_PROXY` | 部署推送目标与 push 代理 | 否 |
 | `COVER_PROXY` | 封面（TikTok CDN）与 Roblox 图标（rbxcdn）下载代理 | 否 |
 | `ROBLOX_PROXY` | Roblox explore-api 代理，留空则用 `CLAUDE_WEB_PROXY` | 否 |
 | `SSL_CERT_FILE` | 企业网络中间人证书路径 | 否 |
 
-**为什么模型写在 `run_weekly.sh` 而不是 `.env`**：定时任务的会话环境本身已注入 `ANTHROPIC_MODEL`，而 `scraper._load_dotenv` 只在变量不存在时才写入（`if key not in os.environ`），所以在 `.env` 里改模型对定时任务无效。`run_weekly.sh` 用 `export ANTHROPIC_MODEL="${WEEKLY_LLM_MODEL:-qwen3.7-max}"` 显式覆盖，`weekly_job.py` 与 `translate_data.py` 都会读到它。手动前台跑 `python3 weekly_job.py weekly` 时没有这层导出，用的是会话/`.env` 的值。
+**模型链**：所有 LLM 调用（洞察/翻译/话题分类/Roblox 介绍/钉钉文案）统一走 `llm.py`，默认 qwen3.8-max → glm-5.3 → qwen3.7-max 依次 fallback：`model not found` 或非瞬态 400 立即换下一个模型，429/超时/空响应同模型重试（每模型最多 3 次）。项目代码**不读 `ANTHROPIC_MODEL`**，会话注入或 `.env` 里的值不影响流水线；换模型用 `LLM_MODELS` 环境变量。
 
-钉钉文案是唯一例外：它走 `DINGTALK_MODEL`（默认 `qwen3.8-max`），因为 `claude-opus-5-5` 频繁 429，重试耗尽后会降级成无链接的纯摘要。
+两个网关怪癖已在 `llm.py` 内处理：模型名必须用基础名（`[1m]` 是 Claude Code 的 1M 上下文语法，直接当 model 字段传会 400）；glm-5.3 强制开启 thinking 且网关不认 `budget_tokens`（thinking 会吃掉几乎全部输出预算），撞到 `enable_thinking` 报错时会自动去掉 thinking 参数并把 max_tokens 放大 4 倍（封顶 16384）。
 
 ### 钉钉机器人（可选）
 
@@ -106,6 +105,7 @@ python3 quick_fetch.py trends ID vv        # 单次抓取：印尼按播放量�
 
 ```
 scraper.py            核心库：API 调用、解析、缓存、预算、Roblox/话题抓取
+llm.py                LLM 统一调用：模型链 fallback（weekly_job 与 translate_data 共用）
 weekly_job.py         每周调度：抓取 → 翻译 → 洞察 → 部署 → 钉钉通知
 translate_data.py     标题翻译
 quick_fetch.py        手动 CLI

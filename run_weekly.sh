@@ -4,10 +4,9 @@
 cd "$(dirname "$0")" || exit 1
 mkdir -p logs
 
-# 定时任务会话会注入 ANTHROPIC_MODEL（当前是 claude-opus-5-5），而 scraper._load_dotenv
-# 只在变量不存在时才写入，所以改 .env 对定时任务无效，必须在这里显式导出。
-# 临时换模型：WEEKLY_LLM_MODEL=xxx bash run_weekly.sh
-export ANTHROPIC_MODEL="${WEEKLY_LLM_MODEL:-qwen3.7-max}"
+# 模型链在 llm.py：默认 qwen3.8-max → glm-5.3 → qwen3.7-max，失败自动 fallback，
+# 可用 LLM_MODELS 环境变量覆盖（逗号分隔）。项目代码不读 ANTHROPIC_MODEL，
+# 会话注入的值不再影响流水线。
 
 if pgrep -f "python3 -u weekly_job.py weekly" >/dev/null; then
     echo "已有每周任务在运行，跳过本次启动"

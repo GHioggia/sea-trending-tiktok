@@ -32,7 +32,7 @@ python3 -m http.server 8090
 
 ## 架构说明
 
-**核心文件：** `scraper.py` 是核心库（API 调用、解析、缓存、预算、Roblox/话题抓取）；`weekly_job.py` 是每周调度（抓取 → 翻译 → AI 洞察 → 部署 → 钉钉通知）；`translate_data.py` 负责标题翻译；`quick_fetch.py` 是手动 CLI。
+**核心文件：** `scraper.py` 是核心库（API 调用、解析、缓存、预算、Roblox/话题抓取）；`llm.py` 是 LLM 统一调用（模型链 fallback，`weekly_job` 与 `translate_data` 共用）；`weekly_job.py` 是每周调度（抓取 → 翻译 → AI 洞察 → 部署 → 钉钉通知）；`translate_data.py` 负责标题翻译；`quick_fetch.py` 是手动 CLI。
 
 **每周流程（`weekly_job.py weekly`）：**
 1. **分类标签抓取**（`scrape_categories`）：6 分类（游戏/搞笑/娱乐/恐怖/萌宠/舞蹈）× ID/TH/PH/MY/SG/global 的本地化标签，约 140 次调用
@@ -59,6 +59,7 @@ python3 -m http.server 8090
 - **封面 HEIC**：App 端接口的 `url_list[0]` 常为 HEIC（PIL 无法解码），需优先选 JPEG/WebP 变体。
 - **Roblox**：explore-api 无官方文档；沙箱直连会被断开，需走代理（`ROBLOX_PROXY`，缺省 `CLAUDE_WEB_PROXY`），且必须用 `requests`（`httpx` 会被服务端断开）；图标在 rbxcdn，走 `COVER_PROXY`。
 - **TikHub MCP 工具**当前报 session 无效，探测接口请直接用 `api_get` / `api_post`（会计入本地预算）。
+- **LLM 模型链**：所有大模型调用走 `llm.py`，默认链 qwen3.8-max → glm-5.3 → qwen3.7-max（`LLM_MODELS` 环境变量可覆盖），失败自动 fallback；项目代码**不读 `ANTHROPIC_MODEL`**。模型名必须用网关基础名（`xxx[1m]` 是 Claude Code 的 1M 上下文语法，直接当 model 字段传会 400）；glm-5.3 强制开 thinking 且网关不认 `budget_tokens`（thinking 会吃掉几乎全部 max_tokens），`llm_call` 撞到 `enable_thinking` 报错会自动去掉 thinking 参数并把 max_tokens 放大 4 倍（封顶 16384）。`llm.py` 顶部的 `import scraper` 不能删——它负责加载 `.env` 并装配沙箱合并 CA 包（`SSL_CERT_FILE`），缺了它 anthropic SDK 过不了 mitmproxy 的 TLS。
 - **video_id 是 19 位数字**——页面数据源必须用 JSON，不能用 CSV（CSV 会丢失大整数精度，导致 TikTok 链接失效）。
 - **TikTok CDN 封面图**：需要在 `<img>` 标签加 `referrerpolicy="no-referrer"`，以及页面头部加 `<meta name="referrer" content="no-referrer">`，否则图片 403。
 - **抖音、美食已停止采集**（2026-10-24）：历史周数据中仍有这些记录，前端加载时过滤（`isRetired`）。

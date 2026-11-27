@@ -33,6 +33,8 @@ from scraper import (
     fetch_topic_videos,
     archive_topic_videos,
 )
+import llm
+from llm import llm_call as _llm_call
 
 # 每周一次跑完全部抓取；标签约 140 次 + 新话题约 50 次调用，低于 DAILY_BUDGET。
 SCHEDULE = {
@@ -309,36 +311,7 @@ def _slim(records: list[dict]) -> str:
     return json.dumps(slim, ensure_ascii=False, indent=1)
 
 
-def _llm_call(prompt: str, max_tokens: int = 1024, model: str | None = None) -> str:
-    import time
-    import anthropic
-    kwargs = {}
-    base_url = os.environ.get("ANTHROPIC_BASE_URL")
-    auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN")
-    if base_url and auth_token:
-        # ducky 代理要求 Bearer 鉴权（auth_token），不能用 x-api-key
-        base_url = base_url.replace("/v1/anthropic", "/v1")
-        kwargs = {"base_url": base_url, "auth_token": auth_token}
-    client = anthropic.Anthropic(**kwargs)
-    last_err = None
-    for attempt in range(5):
-        try:
-            msg = client.messages.create(
-                model=model or os.environ.get("ANTHROPIC_MODEL", "glm-5.2"),
-                max_tokens=max_tokens,
-                thinking={"type": "disabled"},
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return "".join(
-                b.text for b in msg.content if getattr(b, "type", None) == "text"
-            ).strip()
-        except Exception as e:
-            last_err = e
-            s = str(e)
-            quota = "429" in s or "Throttling" in s or "quota" in s.lower()
-            if attempt < 4:
-                time.sleep(60 if quota else 3 * (attempt + 1))
-    raise last_err
+# LLM 调用统一在 llm.py（模型链 fallback），此处保留旧名，各调用点不用改
 
 
 TOPIC_COUNTRIES = {"ID": "印尼", "TH": "泰国", "PH": "菲律宾", "MY": "马来西亚", "SG": "新加坡"}
@@ -708,9 +681,9 @@ def generate_insights(records: list[dict], target_date: str) -> dict:
     return insights
 
 
-# 钉钉文案单独指定模型：ANTHROPIC_MODEL（claude-opus-5-5）近期频繁 429，
-# 一旦重试耗尽就降级成 summary 纯文本，分要点视频链接会整段丢失。
-DINGTALK_MODEL = os.getenv("DINGTALK_MODEL", "qwen3.8-max")
+# 钉钉文案默认走 llm.py 的模型链（有 fallback，429 不再直接丢链接）；
+# 如需钉住单个模型可设 DINGTALK_MODEL，但会失去链式兜底。
+DINGTALK_MODEL = os.getenv("DINGTALK_MODEL", "")
 
 DINGTALK_PROMPT_TPL = """\
 你是微恐游戏团队的东南亚 TikTok 趋势分析师，需要撰写钉钉群周报推送的正文部分。
@@ -850,8 +823,8 @@ def notify_dingtalk(monday_date: str, records: list[dict], insights: dict):
             cat_insights=cat_insights,
             all_insight=all_insights.get("all", ""),
             video_list=_video_list_text(cands),
-        ), max_tokens=2048, model=DINGTALK_MODEL)
-        source = f"LLM 生成（{DINGTALK_MODEL}）"
+        ), max_tokens=2048, model=DINGTALK_MODEL or None)
+        source = f"LLM 生成（{llm.LAST_MODEL}）"
     except Exception as e:
         print(f"  文案生成失败: {e}")
         body = insights.get("summary", "本周洞察已生成，请查看完整报告。")

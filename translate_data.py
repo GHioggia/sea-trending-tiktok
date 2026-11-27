@@ -8,12 +8,11 @@
 """
 
 import json
-import os
 import sys
 import time
 from pathlib import Path
 
-import anthropic
+from llm import llm_call
 
 BATCH_SIZE = 30   # 每次 API 调用翻译的条数
 SAVE_INTERVAL = 3 # 每多少批次保存一次
@@ -24,7 +23,7 @@ def clean_desc(text: str) -> str:
     return " ".join(words).strip()
 
 
-def translate_batch(items: list[dict], client: anthropic.Anthropic) -> list[str]:
+def translate_batch(items: list[dict]) -> list[str]:
     """批量翻译，返回与 items 等长的中文译文列表"""
     lines = []
     for i, item in enumerate(items, 1):
@@ -38,16 +37,8 @@ def translate_batch(items: list[dict], client: anthropic.Anthropic) -> list[str]
         + "\n".join(lines)
     )
 
-    msg = client.messages.create(
-        model=os.environ.get("ANTHROPIC_MODEL", "glm-5.2"),
-        max_tokens=4096,  # 1024 会被长英文简介截断，导致后半批译文为空
-        thinking={"type": "disabled"},
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    result_text = "".join(
-        b.text for b in msg.content if getattr(b, "type", None) == "text"
-    ).strip()
+    # 4096：1024 会被长英文简介截断，导致后半批译文为空；模型链 fallback 见 llm.py
+    result_text = llm_call(prompt, max_tokens=4096)
     results = [""] * len(items)
     for line in result_text.splitlines():
         line = line.strip()
@@ -75,7 +66,6 @@ def translate_file(json_path: Path):
         print("  全部已翻译，跳过")
         return
 
-    client = anthropic.Anthropic()
     total_done = 0
     consecutive_failures = 0
 
@@ -86,7 +76,7 @@ def translate_file(json_path: Path):
         translations = None
         for attempt in range(5):
             try:
-                translations = translate_batch(batch_items, client)
+                translations = translate_batch(batch_items)
                 break
             except Exception as e:
                 s = str(e)
